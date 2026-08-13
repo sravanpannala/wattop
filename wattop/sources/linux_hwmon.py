@@ -61,14 +61,38 @@ class HwmonSource:
 
         for node in sorted(self._root.glob("hwmon*")):
             chip = _read_text(node / "name") or node.name
+            present = {p.name for p in node.iterdir()}
             for path in sorted(node.iterdir()):
                 kind = _classify(path.name)
                 if kind is None:
                     continue
                 unit, scale, group, precision = kind
-                if not _readable(path):
+
+                # amdgpu offers both power1_input and power1_average for the
+                # same rail. The averaged one is the useful reading; showing
+                # both just invites the question of which to believe.
+                stem = path.name.split("_")[0]
+                if path.name.endswith("_input") and f"{stem}_average" in present:
                     continue
-                label = _read_text(path.parent / f"{path.name.split('_')[0]}_label")
+
+                raw = _read_text(path)
+                if raw is None:
+                    continue
+                try:
+                    value = float(raw) * scale
+                except ValueError:
+                    continue
+
+                # Voltage and current nodes that read a hard zero are declared
+                # but unpopulated: amdgpu exposes vddgfx and vddnb on Strix Halo
+                # and never fills them (Zen 5 moved to SVI3, which no in-tree
+                # driver reads), and an idle USB-C port reports 0 V / 0 A. A
+                # channel that will sit at 0.000 V forever is worse than absent.
+                # Fans are exempt: 0 RPM means the fan is genuinely stopped.
+                if unit in ("V", "A") and value == 0.0:
+                    continue
+
+                label = _read_text(node / f"{stem}_label")
                 key = f"hwmon.{chip}.{path.name}"
                 nice = f"{chip} {label or path.name}"
                 candidates.append(

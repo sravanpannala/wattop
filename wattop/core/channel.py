@@ -42,11 +42,15 @@ class Channel:
     nominal_max: float | None = None
     #: Set for values that never change during a run (design capacity, cycles).
     static: bool = False
+    #: Show an explicit sign. Battery power and current are the reason this
+    #: exists: "+33 W" and "-12 W" are different situations, and "33 W" hides it.
+    signed: bool = False
 
     def format(self, value: float | None) -> str:
         if value is None:
             return "--"
-        return f"{value:.{self.precision}f} {self.unit}".rstrip()
+        spec = "+" if self.signed else ""
+        return f"{value:{spec}.{self.precision}f} {self.unit}".rstrip()
 
 
 @runtime_checkable

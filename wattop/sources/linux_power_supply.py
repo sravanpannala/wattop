@@ -49,9 +49,11 @@ class PowerSupplySource:
         out: list[Channel] = []
         if self._battery is not None:
             out += [
-                Channel("batt.power", "Battery", "W", "battery", "battery_power", 2),
+                Channel("batt.power", "Battery", "W", "battery", "battery_power", 2, signed=True),
                 Channel("batt.voltage", "Voltage", "V", "battery", "battery_voltage", 3),
-                Channel("batt.current", "Current", "A", "battery", "battery_current", 3),
+                Channel(
+                    "batt.current", "Current", "A", "battery", "battery_current", 3, signed=True
+                ),
                 Channel(
                     "batt.charge",
                     "Charge",

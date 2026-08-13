@@ -1,0 +1,95 @@
+# wattop configuration -- copy to config.toml, ~/.config/wattop/config.toml,
+# or %APPDATA%\wattop\config.toml.
+#
+# Nothing here is required. The built-in sources discover what they can on their
+# own; this file is for adding readings they do not know about, and for
+# relabelling the ones they do.
+
+[general]
+interval = 1.0    # seconds between samples
+history  = 240    # samples kept for the sparklines
+
+# ---------------------------------------------------------------------------
+# [[sensor]] -- a reading from one of the generic sources.
+#
+# Common keys: key, label, unit, group, role, precision, scale, offset,
+#              nominal_max
+#   group  = in | out | battery | rails | thermal | other   -> which panel
+#   role   = power_in | power_out | battery_power | battery_voltage |
+#            battery_current | battery_charge | battery_level | ac_online
+#            -> the headline slot this fills, if any
+#   scale/offset are applied as  value * scale + offset
+# ---------------------------------------------------------------------------
+
+# A number in a file. This is the AMD APU package power on a Strix Halo box --
+# the built-in hwmon source finds it anyway, so this is only an example of
+# pinning one explicitly (check the node number, it is not stable across boots).
+# [[sensor]]
+# source = "sysfs"
+# path   = "/sys/class/hwmon/hwmon3/power1_average"
+# key    = "apu.power"
+# label  = "APU package"
+# unit   = "W"
+# scale  = 1e-6          # microwatts -> watts
+# group  = "out"
+# role   = "power_out"
+
+# A command. `parse` is "float" (default), "regex:<pattern>" (first capture
+# group) or "json:<pointer>". Runs on a background thread, so a slow command
+# cannot stall the dashboard.
+# [[sensor]]
+# source = "exec"
+# cmd    = ["ectool", "pwmgetfanrpm", "all"]
+# parse  = "regex:(\\d+)$"
+# key    = "ec.fan"
+# label  = "Fan"
+# unit   = "RPM"
+# group  = "thermal"
+
+# An HTTP endpoint returning JSON. On a desktop with no battery and no charger
+# rail, a smart plug is the only way to see true wall power -- this is how the
+# Framework box would get a real `power_in`.
+# [[sensor]]
+# source  = "http_json"
+# url     = "http://plug.lan/cm?cmnd=Status%2010"     # Tasmota
+# pointer = "/StatusSNS/ENERGY/Power"
+# key     = "wall"
+# label   = "Wall"
+# unit    = "W"
+# group   = "in"
+# role    = "power_in"
+
+# Any Windows performance counter, wildcards included. The built-in energy-meter
+# source is exactly this with a known path and nicer labels.
+# [[sensor]]
+# source  = "pdh"
+# counter = "\\Thermal Zone Information(*)\\Temperature"
+# prefix  = "tz"
+# unit    = "degC"
+# offset  = -273.15
+# group   = "thermal"
+# precision = 1
+
+# ---------------------------------------------------------------------------
+# [[derived]] -- channels computed from other channels. Only arithmetic and
+# abs/min/max/round/sqrt/log are allowed.
+# ---------------------------------------------------------------------------
+
+# What the charger delivers that does not reach the system rail or the battery:
+# conversion loss plus anything hanging off the USB-C ports.
+# [[derived]]
+# key   = "charger.loss"
+# label = "Charger loss"
+# unit  = "W"
+# group = "other"
+# expr  = "emi.PSU_USB - emi.SYS - batt.power - emi.USBC_TOTAL"
+
+# ---------------------------------------------------------------------------
+# [overrides."<key>"] -- relabel, regroup or re-role a built-in channel.
+# ---------------------------------------------------------------------------
+
+# [overrides."emi.USBC_TOTAL"]
+# label = "USB-C ports"
+
+# [overrides."emi.GPU"]
+# label = "Adreno"

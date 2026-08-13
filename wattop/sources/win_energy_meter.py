@@ -43,6 +43,7 @@ class EnergyMeterSource:
         self._path = counter_path
         self._query = None
         self._instances: list[str] = []
+        self._held: dict[str, float] = {}
 
     def available(self) -> bool:
         if sys.platform != "win32":
@@ -85,12 +86,25 @@ class EnergyMeterSource:
     def read(self) -> dict[str, float]:
         if self._query is None:
             return {}
-        raw = self._query.read()
-        return {
-            f"emi.{name}": mw / 1000.0
-            for name, mw in raw.items()
-            if name.lower() not in _SKIP
-        }
+        raw = {k: v for k, v in self._query.read().items() if k.lower() not in _SKIP}
+        if not raw:
+            return dict(self._held)
+
+        # The firmware advances these counters about once a second. Poll faster
+        # than that and PDH divides a zero energy delta by the elapsed time and
+        # hands back 0 W for every rail at once -- which would read as "the
+        # charger stopped" rather than "no new data yet". A genuine all-zero is
+        # not a thing on a running machine (SYS is never 0), so treat it as a
+        # stale tick and hold the last real numbers.
+        #
+        # Cross-checked against deriving watts from the cumulative
+        # `\Energy Meter(*)\Energy` counter instead: once settled the two agree
+        # to 0.01 W, so the Power counter is right and only the gaps are wrong.
+        if all(v == 0.0 for v in raw.values()):
+            return dict(self._held)
+
+        self._held = {f"emi.{name}": mw / 1000.0 for name, mw in raw.items()}
+        return dict(self._held)
 
     def close(self) -> None:
         if self._query is not None:

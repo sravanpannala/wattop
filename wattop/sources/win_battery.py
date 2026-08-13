@@ -286,9 +286,9 @@ class BatterySource:
         p = self._prefix
         full = self._static.get(f"{p}.full")
         out = [
-            Channel(f"{p}.power", "Battery", "W", "battery", "battery_power", 2),
+            Channel(f"{p}.power", "Battery", "W", "battery", "battery_power", 2, signed=True),
             Channel(f"{p}.voltage", "Voltage", "V", "battery", "battery_voltage", 3),
-            Channel(f"{p}.current", "Current", "A", "battery", "battery_current", 3),
+            Channel(f"{p}.current", "Current", "A", "battery", "battery_current", 3, signed=True),
             Channel(f"{p}.charge", "Charge", "Wh", "battery", "battery_charge", 2, nominal_max=full),
             Channel(f"{p}.level", "Level", "%", "battery", "battery_level", 1, nominal_max=100.0),
             Channel(f"{p}.temp", "Batt temp", "degC", "thermal", None, 1),

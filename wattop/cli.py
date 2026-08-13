@@ -9,6 +9,7 @@ import sys
 import time
 
 from wattop import __version__
+from wattop.core.aggregates import attach_builtin_aggregates
 from wattop.core.config import load as load_config
 from wattop.core.registry import build_sources
 from wattop.core.sampler import Sampler
@@ -72,6 +73,7 @@ def make_sampler(args):
         history_len=history,
         overrides=cfg.overrides,
     )
+    attach_builtin_aggregates(sampler)
     if cfg.path is not None:
         log.debug("config loaded from %s", cfg.path)
     return sampler, interval, cfg

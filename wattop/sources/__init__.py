@@ -11,7 +11,7 @@ import sys
 from wattop.sources import generic  # noqa: F401  (registers nothing, provides builders)
 
 if sys.platform == "win32":
-    from wattop.sources import win_battery, win_energy_meter  # noqa: F401
+    from wattop.sources import win_battery, win_energy_meter, win_thermal  # noqa: F401
 else:
     from wattop.sources import (  # noqa: F401
         linux_hwmon,

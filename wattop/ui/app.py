@@ -34,6 +34,7 @@ HEADLINE_ROLES = (
     ("IN", "power_in"),
     ("OUT", "power_out"),
     ("BATT", "battery_power"),
+    ("TEMP", "temperature"),
 )
 
 #: Roles already shown by the headline or the battery line. The group panels
@@ -48,20 +49,30 @@ CONSUMED_ROLES = frozenset(
         "battery_charge",
         "battery_level",
         "ac_online",
+        "temperature",
     }
 )
 CONSUMED_KEYS = frozenset({"batt.eta", "batt.full"})
 
 
 #: Fraction of the window each headline graph gets. The two that actually move
-#: -- what the machine is drawing, and which way the battery is going -- take a
-#: quarter of the screen each; the charger rail sits at its ceiling most of the
-#: time and makes do with the leftover. Override per role in config.toml:
+#: -- what the machine is drawing, and which way the battery is going -- take
+#: 40% of the screen each; the charger rail and the hottest sensor get a quarter.
+#: That deliberately adds up to more than one screen: the graphs live in a scroll
+#: container, and scrolling for the last one is the price of being able to read
+#: the first two. Override per role in config.toml:
 #:
 #:     [graphs]
-#:     power_out = 0.25
-#:     battery_power = 0.25
-DEFAULT_GRAPH_WEIGHTS = {"power_out": 0.25, "battery_power": 0.25}
+#:     power_out = 0.3
+#:     battery_power = 0.3
+#:     power_in = 0.15
+#:     temperature = 0.15
+DEFAULT_GRAPH_WEIGHTS = {
+    "power_out": 0.4,
+    "battery_power": 0.4,
+    "power_in": 0.25,
+    "temperature": 0.25,
+}
 
 #: Every panel costs a top and bottom border on top of its plot rows.
 BORDER_ROWS = 2
@@ -71,6 +82,7 @@ RAMP_FOR_ROLE = {
     "power_in": "power_in",
     "power_out": "power_out",
     "battery_power": "battery",
+    "temperature": "temperature",
 }
 
 
@@ -324,8 +336,11 @@ class WattopApp(App):
                 heights[role] = each
             used += sum(heights[r] + BORDER_ROWS for r in unweighted)
 
-        while used > spare and max(heights.values()) > 2:
-            tallest = max(heights, key=lambda r: heights[r])
+        # An explicit weight is taken at its word even when the total overflows
+        # the window -- the container scrolls. Only unweighted graphs, which are
+        # merely filling leftover space, give rows back to make things fit.
+        while used > spare and unweighted and max(heights[r] for r in unweighted) > 2:
+            tallest = max(unweighted, key=lambda r: heights[r])
             heights[tallest] -= 1
             used -= 1
         return heights

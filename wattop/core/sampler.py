@@ -63,6 +63,15 @@ class Sampler:
         self.channels[ch.key] = ch
         self.history[ch.key] = deque(maxlen=self.history_len)
 
+    def add_derived(self, derived: DerivedChannel) -> None:
+        """Register a derived channel after construction.
+
+        Aggregates that depend on what discovery found cannot be passed in up
+        front -- see `wattop.core.aggregates`.
+        """
+        self.derived.append(derived)
+        self._add(derived.channel)
+
     def role(self, role: str) -> Channel | None:
         """First channel claiming a semantic slot, e.g. "power_in"."""
         for ch in self.channels.values():

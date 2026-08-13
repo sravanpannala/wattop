@@ -51,6 +51,9 @@ GRADIENTS = {
     "power_in": ["#1b5e20", "#2e7d32", "#388e3c", "#43a047", "#4caf50", "#66bb6a", "#81c784"],
     "power_out": ["#01579b", "#0277bd", "#0288d1", "#039be5", "#03a9f4", "#29b6f6", "#4fc3f7"],
     "battery": ["#f57f17", "#f9a825", "#fbc02d", "#fdd835", "#ffee58", "#fff176", "#fff59d"],
+    # Cool at the floor, hot at the ceiling -- the ramp reads as a temperature
+    # even before you look at the axis.
+    "temperature": ["#1b5e20", "#558b2f", "#9e9d24", "#f9a825", "#ef6c00", "#e64a19", "#c62828"],
     "default": ["#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"],
 }
 

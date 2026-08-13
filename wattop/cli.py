@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def make_sampler(args) -> tuple[Sampler, float]:
+def make_sampler(args):
     cfg = load_config(args.config)
     interval = args.interval if args.interval is not None else cfg.interval
     history = args.history if args.history is not None else cfg.history
@@ -74,7 +74,7 @@ def make_sampler(args) -> tuple[Sampler, float]:
     )
     if cfg.path is not None:
         log.debug("config loaded from %s", cfg.path)
-    return sampler, interval
+    return sampler, interval, cfg
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    sampler, interval = make_sampler(args)
+    sampler, interval, cfg = make_sampler(args)
     if not sampler.channels:
         print(
             "wattop: no power sensors found on this machine.\n"
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_log(sampler, interval, args.log, args.count)
         if args.json:
             return cmd_stream(sampler, interval, args.count)
-        return cmd_tui(sampler, interval, args.graph_height)
+        return cmd_tui(sampler, interval, args.graph_height, cfg.graph_weights or None)
     except KeyboardInterrupt:
         return 130
     finally:
@@ -179,10 +179,20 @@ def cmd_log(sampler: Sampler, interval: float, path: str, count: int | None) -> 
     return 0
 
 
-def cmd_tui(sampler: Sampler, interval: float, graph_height: int | None = None) -> int:
+def cmd_tui(
+    sampler: Sampler,
+    interval: float,
+    graph_height: int | None = None,
+    graph_weights: dict[str, float] | None = None,
+) -> int:
     from wattop.ui.app import WattopApp
 
-    WattopApp(sampler=sampler, interval=interval, graph_height=graph_height).run()
+    WattopApp(
+        sampler=sampler,
+        interval=interval,
+        graph_height=graph_height,
+        graph_weights=graph_weights,
+    ).run()
     return 0
 
 

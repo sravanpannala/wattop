@@ -69,16 +69,28 @@ def graph_bounds(data, anchor_zero: bool = False) -> tuple[float, float]:
     inside the span so the baseline stays meaningful.
     """
     lo, hi = min(data), max(data)
-    if lo < 0:
-        return lo * 1.05, max(hi * 1.05, 0.0)
+    span, ref = hi - lo, max(abs(lo), abs(hi))
 
-    span = hi - lo
+    if ref == 0:
+        return 0.0, 1.0  # nothing to draw; an empty plot says so plainly
+
+    if lo < 0 <= hi:  # crosses zero, so keep the baseline visible on both sides
+        pad = span * 0.08
+        return lo - pad, hi + pad
+
     # Only treat a series as flat when it really is. The charger rail wanders
     # about 0.3 W around 59.5; that is 0.5% and worth seeing, so the cutoff sits
     # below it. Anything tighter than 0.2% is float noise and gets a flat band.
-    if span <= max(abs(hi) * 0.002, 1e-12):
-        pad = max(abs(hi) * 0.05, 1e-6)
-        return hi - pad, hi + pad
+    if span <= ref * 0.002 + 1e-12:
+        pad = max(ref * 0.05, 1e-6)
+        return lo - pad, hi + pad
+
+    if hi <= 0:
+        # Entirely negative -- a battery that has been discharging the whole
+        # window. Zero sits above the plot, so bars hang from the top edge;
+        # scale to the window as for positive series rather than stretching the
+        # span up to zero, which would peg every column at full depth.
+        return lo - span * 0.10, min(0.0, hi + span * 0.15)
     return max(0.0, lo - span * 0.15), hi + span * 0.10
 
 

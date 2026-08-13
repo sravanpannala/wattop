@@ -53,6 +53,19 @@ CONSUMED_ROLES = frozenset(
 CONSUMED_KEYS = frozenset({"batt.eta", "batt.full"})
 
 
+#: Fraction of the window each headline graph gets. The two that actually move
+#: -- what the machine is drawing, and which way the battery is going -- take a
+#: quarter of the screen each; the charger rail sits at its ceiling most of the
+#: time and makes do with the leftover. Override per role in config.toml:
+#:
+#:     [graphs]
+#:     power_out = 0.25
+#:     battery_power = 0.25
+DEFAULT_GRAPH_WEIGHTS = {"power_out": 0.25, "battery_power": 0.25}
+
+#: Every panel costs a top and bottom border on top of its plot rows.
+BORDER_ROWS = 2
+
 #: Which colour ramp each headline graph uses.
 RAMP_FOR_ROLE = {
     "power_in": "power_in",
@@ -224,12 +237,19 @@ class WattopApp(App):
     paused = reactive(False)
 
     def __init__(
-        self, sampler: Sampler, interval: float = 1.0, graph_height: int | None = None
+        self,
+        sampler: Sampler,
+        interval: float = 1.0,
+        graph_height: int | None = None,
+        graph_weights: dict[str, float] | None = None,
     ) -> None:
         super().__init__()
         self.sampler = sampler
         self.interval = interval
         self.graph_height = graph_height
+        self.graph_weights = (
+            DEFAULT_GRAPH_WEIGHTS if graph_weights is None else dict(graph_weights)
+        )
         self._timer = None
         self._panels: dict[str, GroupPanel] = {}
         self._graphs: list[Graph] = []
@@ -270,24 +290,51 @@ class WattopApp(App):
         self.sampler.sample()
         self.refresh_panels()
 
-    def _graph_height(self) -> int:
-        """Give the graphs whatever vertical room the panels below don't need."""
-        if self.graph_height:
-            return max(2, self.graph_height)
+    def _graph_heights(self) -> dict[str, int]:
+        """Plot rows for each headline graph.
+
+        Weighted roles get a fixed share of the *window*, so "a quarter of the
+        screen" stays a quarter regardless of how many rails the machine turns
+        out to have. Everything else splits whatever the panels below don't
+        need. If the total overshoots -- a short window, or a lot of rails --
+        the tallest graph gives up rows until it fits.
+        """
         if not self._graphs:
-            return 0
+            return {}
+        if self.graph_height:
+            return {g.role: max(2, self.graph_height) for g in self._graphs}
+
+        total = self.size.height or 40
         rows_below = 1 + 1  # battery line + footer
-        for group, _panel in self._panels.items():
+        for group in self._panels:
             rows_below += 1 + len(GroupPanel.members(self.sampler, group))
-        spare = (self.size.height or 40) - rows_below - 1
-        # Each graph costs its plot rows plus a top and bottom border.
-        return max(2, min(14, spare // max(1, len(self._graphs)) - 2))
+        spare = max(len(self._graphs) * (2 + BORDER_ROWS), total - rows_below - 1)
+
+        heights: dict[str, int] = {}
+        for graph in self._graphs:
+            weight = self.graph_weights.get(graph.role)
+            if weight is not None:
+                heights[graph.role] = max(2, round(total * weight) - BORDER_ROWS)
+
+        unweighted = [g.role for g in self._graphs if g.role not in heights]
+        used = sum(h + BORDER_ROWS for h in heights.values())
+        if unweighted:
+            each = max(2, (spare - used) // len(unweighted) - BORDER_ROWS)
+            for role in unweighted:
+                heights[role] = each
+            used += sum(heights[r] + BORDER_ROWS for r in unweighted)
+
+        while used > spare and max(heights.values()) > 2:
+            tallest = max(heights, key=lambda r: heights[r])
+            heights[tallest] -= 1
+            used -= 1
+        return heights
 
     def refresh_panels(self) -> None:
         width = self.size.width or 100
-        height = self._graph_height()
+        heights = self._graph_heights()
         for graph in self._graphs:
-            graph.update(graph.render_content(self.sampler, width, height))
+            graph.update(graph.render_content(self.sampler, width, heights[graph.role]))
         battery = self.query_one("#battery", BatteryLine)
         battery.update(battery.render_content(self.sampler))
         for group, panel in self._panels.items():

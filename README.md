@@ -38,10 +38,20 @@ CPU_CLUSTER_1     0.74 W  ██████████████████
 GPU               0.10 W  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇██
 ```
 
-The headline graphs fill whatever vertical room the window has (`--graph-height` to pin it) and
-scale to the window rather than to zero — a charger rail sitting at 59.5 W plotted from zero fills
-every cell and tells you nothing. Both bounds are printed on the axis, so what you are looking at is
-never ambiguous.
+**OUT** and **BATT** take a quarter of the window each — they are the two that actually move — and
+the charger rail makes do with the leftover, since it sits at its ceiling most of the time. Retune
+per role in `config.toml`:
+
+```toml
+[graphs]
+power_out = 0.25
+battery_power = 0.25
+```
+
+`--graph-height N` pins every graph instead. Graphs scale to the window rather than to zero: a rail
+sitting at 59.5 W plotted from zero fills every cell and tells you nothing. Both bounds are printed
+on the axis, so what you are looking at is never ambiguous. A battery that has been discharging the
+whole window hangs its bars from the top edge, because zero is then above the plot.
 
 ## What it can read
 

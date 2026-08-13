@@ -7,7 +7,13 @@
 
 [general]
 interval = 1.0    # seconds between samples
-history  = 240    # samples kept for the sparklines
+history  = 240    # samples kept for the graphs
+
+# Fraction of the window height each headline graph gets. Roles left out share
+# whatever the panels below do not need. Defaults shown.
+[graphs]
+power_out     = 0.25
+battery_power = 0.25
 
 # ---------------------------------------------------------------------------
 # [[sensor]] -- a reading from one of the generic sources.

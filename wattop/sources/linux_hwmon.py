@@ -32,7 +32,7 @@ _KINDS = (
     (re.compile(r"^fan(\d+)_input$"), ("RPM", 1.0, "thermal", 0)),
     (re.compile(r"^in(\d+)_input$"), ("V", 1e-3, "rails", 3)),
     (re.compile(r"^curr(\d+)_input$"), ("A", 1e-3, "rails", 3)),
-    (re.compile(r"^freq(\d+)_input$"), ("Hz", 1.0, "other", 0)),
+    (re.compile(r"^freq(\d+)_input$"), ("MHz", 1e-6, "other", 0)),
 )
 
 #: Chip whose package-power reading is the best "what is this machine using"
@@ -94,7 +94,10 @@ class HwmonSource:
 
                 label = _read_text(node / f"{stem}_label")
                 key = f"hwmon.{chip}.{path.name}"
-                nice = f"{chip} {label or path.name}"
+                # Chips without a *_label file (acpitz, nvme controllers, the
+                # NIC) fall back to the node name; "acpitz_0 temp1" reads better
+                # than "acpitz_0 temp1_input" and loses nothing.
+                nice = f"{chip} {label or stem}"
                 candidates.append(
                     (key, path, scale, Channel(key, nice, unit, group, None, precision))
                 )

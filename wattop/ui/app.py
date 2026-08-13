@@ -203,14 +203,18 @@ class GroupPanel(Static):
 
     def render_content(self, sampler: Sampler, width: int) -> Table:
         values = sampler.latest.values
-        spark_width = max(8, min(40, width - 40))
+        members = self.members(sampler, self.group)
+        # Sized to the content: cros_ec labels like "mainboard_memory@4d" run
+        # well past any fixed width and tear the columns apart.
+        label_w = max(12, min(34, max((len(c.label) for c in members), default=12)))
+        spark_width = max(8, min(40, width - label_w - 20))
 
         table = Table.grid(padding=(0, 1))
-        table.add_column(justify="left", width=20)
+        table.add_column(justify="left", width=label_w)
         table.add_column(justify="right", width=12)
         table.add_column(justify="left", width=spark_width)
 
-        for ch in self.members(sampler, self.group):
+        for ch in members:
             if ch.key not in values:
                 continue
             v = values[ch.key]

@@ -223,6 +223,11 @@ def render_table(sampler: Sampler) -> str:
             f"{volts.format(values[volts.key]):>12}  {amps.format(values[amps.key]):>12}"
         )
 
+    # One label width for the whole table. Fixed at 20 the columns tore apart on
+    # the Framework box, whose cros_ec labels run to "mainboard_memory@4d".
+    shown = [c for c in sampler.channels.values() if c.key in values]
+    label_w = max((len(c.label) for c in shown), default=12)
+
     for group in sampler.groups():
         members = [c for c in sampler.by_group(group) if c.key in values]
         if not members:
@@ -230,7 +235,7 @@ def render_table(sampler: Sampler) -> str:
         lines.append("")
         lines.append(f"[{group}]")
         for ch in members:
-            lines.append(f"  {ch.label:<20} {ch.format(values[ch.key]):>12}   {ch.key}")
+            lines.append(f"  {ch.label:<{label_w}} {ch.format(values[ch.key]):>12}   {ch.key}")
 
     if sampler.failed:
         lines.append("")

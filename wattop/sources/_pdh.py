@@ -101,11 +101,25 @@ class PdhWildcardQuery:
                 out[item.szName] = item.FmtValue.doubleValue
         return out
 
-    def prime(self, wait: float = 0.12) -> dict[str, float]:
-        """Rate counters need two samples separated in time before they yield
-        anything. Used once at startup to discover the instance names."""
-        time.sleep(wait)
-        return self.read()
+    def prime(self, timeout: float = 1.6, step: float = 0.1) -> dict[str, float]:
+        """Wait for the counter to produce real data, then return it.
+
+        Rate counters need two samples separated in time, and some providers
+        only advance their accumulator about once a second -- the energy meter
+        on a Snapdragon X Elite is one. Sampling inside that window yields a
+        zero delta, so a fixed short sleep gives back a full set of zeros and
+        the caller cannot tell "idle" from "not ready". Poll until something is
+        non-zero, or give up and let the caller decide.
+        """
+        deadline = time.monotonic() + timeout
+        values: dict[str, float] = {}
+        while True:
+            time.sleep(step)
+            values = self.read()
+            if any(v != 0.0 for v in values.values()):
+                return values
+            if time.monotonic() >= deadline:
+                return values
 
     def close(self) -> None:
         if self._query:

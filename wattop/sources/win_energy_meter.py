@@ -64,6 +64,11 @@ class EnergyMeterSource:
             return False
         self._query = query
         self._instances = sorted(names, key=_display_order)
+        # Seed the held values from the priming pair, so the very first read()
+        # has real numbers even if it lands before the counter next advances.
+        # Without this, a single-shot `--list` can show blanks, and anything
+        # derived from these rails cannot be computed at all.
+        self._held = {f"emi.{n}": values[n] / 1000.0 for n in names}
         return True
 
     def channels(self) -> list[Channel]:

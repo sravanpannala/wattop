@@ -26,7 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-i", "--interval", type=float, metavar="SEC", help="seconds between samples (default 1.0)"
     )
-    p.add_argument("--history", type=int, metavar="N", help="samples kept for the sparklines")
+    p.add_argument("--history", type=int, metavar="N", help="samples kept for the graphs")
+    p.add_argument(
+        "--graph-height",
+        type=int,
+        metavar="ROWS",
+        help="rows per headline graph (default: fill the window)",
+    )
 
     mode = p.add_argument_group("modes (default is the live TUI)")
     mode.add_argument(
@@ -97,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_log(sampler, interval, args.log, args.count)
         if args.json:
             return cmd_stream(sampler, interval, args.count)
-        return cmd_tui(sampler, interval)
+        return cmd_tui(sampler, interval, args.graph_height)
     except KeyboardInterrupt:
         return 130
     finally:
@@ -173,10 +179,10 @@ def cmd_log(sampler: Sampler, interval: float, path: str, count: int | None) -> 
     return 0
 
 
-def cmd_tui(sampler: Sampler, interval: float) -> int:
+def cmd_tui(sampler: Sampler, interval: float, graph_height: int | None = None) -> int:
     from wattop.ui.app import WattopApp
 
-    WattopApp(sampler=sampler, interval=interval).run()
+    WattopApp(sampler=sampler, interval=interval, graph_height=graph_height).run()
     return 0
 
 

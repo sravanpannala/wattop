@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import platform
 
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -18,7 +19,16 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Static
 
 from wattop.core.sampler import Sampler
-from wattop.render import bar, format_eta, group_title, sparkline, value_style
+from wattop.render import (
+    bar,
+    block_graph,
+    format_eta,
+    graph_bounds,
+    group_title,
+    ramp_color,
+    sparkline,
+    value_style,
+)
 
 HEADLINE_ROLES = (
     ("IN", "power_in"),
@@ -43,45 +53,65 @@ CONSUMED_ROLES = frozenset(
 CONSUMED_KEYS = frozenset({"batt.eta", "batt.full"})
 
 
-class Headline(Static):
-    """The three numbers the whole tool exists for, plus their history."""
+#: Which colour ramp each headline graph uses.
+RAMP_FOR_ROLE = {
+    "power_in": "power_in",
+    "power_out": "power_out",
+    "battery_power": "battery",
+}
 
-    def render_content(self, sampler: Sampler, width: int) -> Table:
+
+class Graph(Static):
+    """One headline channel as a full-height btop-style area graph."""
+
+    def __init__(self, tag: str, role: str) -> None:
+        super().__init__(id=f"graph-{role}")
+        self.tag = tag
+        self.role = role
+
+    def render_content(self, sampler: Sampler, width: int, height: int) -> Panel:
+        ch = sampler.role(self.role)
         values = sampler.latest.values
-        spark_width = max(8, min(48, width - 46))
+        if ch is None:
+            return Panel(Text(""), title=self.tag)
 
-        table = Table.grid(padding=(0, 1))
-        table.add_column(justify="left", width=5)
-        table.add_column(justify="left", width=14)
-        table.add_column(justify="right", width=12)
-        table.add_column(justify="left", width=spark_width)
-        table.add_column(justify="left")
+        history = list(sampler.history[ch.key]) or [values.get(ch.key, 0.0)]
+        anchor = ch.unit in ("W", "A")
+        lo, hi = graph_bounds(history, anchor_zero=anchor)
 
-        drawn = False
-        for tag, role in HEADLINE_ROLES:
-            ch = sampler.role(role)
-            if ch is None or ch.key not in values:
-                continue
-            drawn = True
-            v = values[ch.key]
-            history = sampler.history[ch.key]
-            # Only bar against a bound that means something. Scaling to the
-            # running maximum would peg the bar at full forever and say nothing.
-            gauge = bar(abs(v), ch.nominal_max, 12) if ch.nominal_max else ""
-            table.add_row(
-                Text(tag, style="bold"),
-                Text(ch.label, style="dim"),
-                Text(ch.format(v), style=value_style(ch, v)),
-                Text(
-                    sparkline(history, spark_width, anchor_zero=ch.unit in ("W", "A")),
-                    style=value_style(ch, v),
-                ),
-                Text(gauge, style="dim"),
-            )
+        label_w = 8
+        inner = max(10, width - label_w - 4)
+        rows = block_graph(history, inner, height, lo, hi, anchor_zero=anchor)
+        ramp = RAMP_FOR_ROLE.get(self.role, "default")
 
-        if not drawn:
-            table.add_row(Text("--", style="dim"), Text("no headline channels"), "", "", "")
-        return table
+        body = Text()
+        for i, row in enumerate(rows):
+            if i == 0:
+                axis = f"{hi:>{label_w - 2}.1f} "
+            elif i == height - 1:
+                axis = f"{lo:>{label_w - 2}.1f} "
+            else:
+                axis = " " * (label_w - 1)
+            body.append(axis, style="dim")
+            for glyph, level in row:
+                body.append(glyph, style=ramp_color(ramp, level, height))
+            if i < height - 1:
+                body.append("\n")
+
+        current = values.get(ch.key)
+        title = Text.assemble((self.tag, "bold"), (f"  {ch.label}", "dim"))
+        subtitle = Text(ch.format(current), style=value_style(ch, current or 0.0))
+        if ch.nominal_max and current is not None:
+            subtitle.append(" " + bar(abs(current), ch.nominal_max, 10), style="dim")
+        return Panel(
+            body,
+            title=title,
+            title_align="left",
+            subtitle=subtitle,
+            subtitle_align="right",
+            border_style=ramp_color(ramp, height - 1, height),
+            padding=(0, 0),
+        )
 
 
 class BatteryLine(Static):
@@ -177,8 +207,8 @@ class GroupPanel(Static):
 class WattopApp(App):
     CSS = """
     Screen { background: $surface; }
-    #headline { padding: 1 2 0 2; }
-    #battery  { padding: 0 2 1 2; }
+    .graph    { padding: 0 2; }
+    #battery  { padding: 1 2 1 2; }
     .panel    { padding: 0 2 1 2; }
     .heading  { color: $accent; text-style: bold; padding: 0 2; }
     #status   { color: $text-muted; padding: 0 2; }
@@ -193,16 +223,26 @@ class WattopApp(App):
 
     paused = reactive(False)
 
-    def __init__(self, sampler: Sampler, interval: float = 1.0) -> None:
+    def __init__(
+        self, sampler: Sampler, interval: float = 1.0, graph_height: int | None = None
+    ) -> None:
         super().__init__()
         self.sampler = sampler
         self.interval = interval
+        self.graph_height = graph_height
         self._timer = None
         self._panels: dict[str, GroupPanel] = {}
+        self._graphs: list[Graph] = []
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
-            yield Headline(id="headline")
+            for tag, role in HEADLINE_ROLES:
+                if self.sampler.role(role) is None:
+                    continue
+                graph = Graph(tag, role)
+                graph.add_class("graph")
+                self._graphs.append(graph)
+                yield graph
             yield BatteryLine(id="battery")
             for group in self.sampler.groups():
                 # A group whose channels are all headlined needs no panel.
@@ -230,11 +270,24 @@ class WattopApp(App):
         self.sampler.sample()
         self.refresh_panels()
 
+    def _graph_height(self) -> int:
+        """Give the graphs whatever vertical room the panels below don't need."""
+        if self.graph_height:
+            return max(2, self.graph_height)
+        if not self._graphs:
+            return 0
+        rows_below = 1 + 1  # battery line + footer
+        for group, _panel in self._panels.items():
+            rows_below += 1 + len(GroupPanel.members(self.sampler, group))
+        spare = (self.size.height or 40) - rows_below - 1
+        # Each graph costs its plot rows plus a top and bottom border.
+        return max(2, min(14, spare // max(1, len(self._graphs)) - 2))
+
     def refresh_panels(self) -> None:
         width = self.size.width or 100
-        self.query_one("#headline", Headline).update(
-            self.query_one("#headline", Headline).render_content(self.sampler, width)
-        )
+        height = self._graph_height()
+        for graph in self._graphs:
+            graph.update(graph.render_content(self.sampler, width, height))
         battery = self.query_one("#battery", BatteryLine)
         battery.update(battery.render_content(self.sampler))
         for group, panel in self._panels.items():

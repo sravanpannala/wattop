@@ -100,12 +100,18 @@ class Graph(Static):
         if ch is None:
             return Panel(Text(""), title=self.tag)
 
-        history = list(sampler.history[ch.key]) or [values.get(ch.key, 0.0)]
+        label_w = 8
+        inner = max(10, width - label_w - 4)
+
+        # Scale to the window that is actually drawn, not to the whole ring
+        # buffer. block_graph plots the last `inner` samples, so deriving the
+        # axis from all 240 let long-gone spikes squash the visible bars into a
+        # band -- graphs that looked fine at startup drifted out of shape as the
+        # history outgrew the panel width.
+        history = list(sampler.history[ch.key])[-inner:] or [values.get(ch.key, 0.0)]
         anchor = ch.unit in ("W", "A")
         lo, hi = graph_bounds(history, anchor_zero=anchor)
 
-        label_w = 8
-        inner = max(10, width - label_w - 4)
         rows = block_graph(history, inner, height, lo, hi, anchor_zero=anchor)
         ramp = RAMP_FOR_ROLE.get(self.role, "default")
 
@@ -118,8 +124,9 @@ class Graph(Static):
             else:
                 axis = " " * (label_w - 1)
             body.append(axis, style="dim")
-            for glyph, level in row:
-                body.append(glyph, style=ramp_color(ramp, level, height))
+            # One span for the whole row: the ramp is keyed on row height, so
+            # every cell here is the same colour.
+            body.append(row, style=ramp_color(ramp, height - 1 - i, height))
             if i < height - 1:
                 body.append("\n")
 

@@ -104,11 +104,14 @@ def block_graph(
     lo: float | None = None,
     hi: float | None = None,
     anchor_zero: bool = False,
-) -> list[list[tuple[str, int]]]:
+) -> list[str]:
     """A btop-style area graph, `height` rows tall.
 
-    Returns rows top-first; each row is a list of (glyph, ramp index) pairs so
-    the caller can colour by height without this module importing Rich.
+    Returns `height` strings, top row first -- one string per row rather than a
+    glyph-per-cell list, because the colour ramp is keyed on the row: every cell
+    in a row gets the same colour, so the caller can paint a whole row with a
+    single style. The per-cell form cost ~1800 styled spans per graph per frame,
+    which Rich does not coalesce, and it dominated the frame time.
 
     Bars grow from the zero line when the series crosses zero and from the floor
     otherwise. Downward bars are coarser than upward ones -- Unicode has eight
@@ -117,7 +120,7 @@ def block_graph(
     """
     data = list(values)[-width:]
     if not data or height < 1:
-        return [[] for _ in range(height)]
+        return ["" for _ in range(height)]
 
     if lo is None or hi is None:
         auto_lo, auto_hi = graph_bounds(data, anchor_zero)
@@ -130,28 +133,26 @@ def block_graph(
     # Where the zero line sits, in eighth-cells above the graph floor.
     zero_e = max(0.0, min(height * 8.0, (0.0 - lo) / span * height * 8)) if lo < 0 else 0.0
 
-    rows: list[list[tuple[str, int]]] = [[] for _ in range(height)]
+    cells: list[list[str]] = [[] for _ in range(height)]
     for value in data:
         v_e = (value - lo) / span * height * 8
         top_e, bottom_e = (max(v_e, zero_e), min(v_e, zero_e))
         for row in range(height):  # row 0 is the floor
             cell_lo, cell_hi = row * 8.0, row * 8.0 + 8.0
-            ramp = row
+            out = cells[height - 1 - row]
             if bottom_e >= cell_hi or top_e <= cell_lo:
-                rows[height - 1 - row].append((" ", ramp))
+                out.append(" ")
                 continue
-            filled_lo = max(bottom_e, cell_lo)
-            filled_hi = min(top_e, cell_hi)
-            filled = filled_hi - filled_lo
+            filled = min(top_e, cell_hi) - max(bottom_e, cell_lo)
             if filled >= 7.5:
-                rows[height - 1 - row].append(("█", ramp))
-            elif filled_lo <= cell_lo + 1e-9:
+                out.append("█")
+            elif max(bottom_e, cell_lo) <= cell_lo + 1e-9:
                 # anchored to the floor of the cell: grows upward
-                rows[height - 1 - row].append((UP_EIGHTHS[max(1, round(filled))], ramp))
+                out.append(UP_EIGHTHS[max(1, round(filled))])
             else:
                 # hanging from the ceiling of the cell: only two glyphs exist
-                rows[height - 1 - row].append((DOWN_HALF if filled >= 3 else DOWN_EIGHTH, ramp))
-    return rows
+                out.append(DOWN_HALF if filled >= 3 else DOWN_EIGHTH)
+    return ["".join(row) for row in cells]
 
 
 def ramp_color(kind: str, index: int, height: int) -> str:

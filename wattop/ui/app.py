@@ -13,8 +13,9 @@ import platform
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Grid, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Static
 
@@ -55,12 +56,14 @@ CONSUMED_ROLES = frozenset(
 CONSUMED_KEYS = frozenset({"batt.eta", "batt.full"})
 
 
-#: Fraction of the window each headline graph gets. The two that actually move
-#: -- what the machine is drawing, and which way the battery is going -- take
-#: 40% of the screen each; the charger rail and the hottest sensor get a quarter.
-#: That deliberately adds up to more than one screen: the graphs live in a scroll
-#: container, and scrolling for the last one is the price of being able to read
-#: the first two. Override per role in config.toml:
+#: Fraction of the window each headline graph gets, as *height*. In a landscape
+#: window the graphs sit two to a row, heaviest first, so equal weights share a
+#: row and a row is as tall as the taller of its pair: the two that actually
+#: move -- what the machine is drawing, and which way the battery is going --
+#: take the top row at 40%, the charger rail and the hottest sensor share the
+#: second at a quarter. A portrait window stacks them in one column instead,
+#: where the same weights overflow the screen and the container scrolls.
+#: Override per role in config.toml:
 #:
 #:     [graphs]
 #:     power_out = 0.3
@@ -101,7 +104,12 @@ class Graph(Static):
             return Panel(Text(""), title=self.tag)
 
         label_w = 8
-        inner = max(10, width - label_w - 4)
+        # `width` is this widget's content width (padding and scrollbar already
+        # excluded); only the Panel border and the axis column remain. Getting
+        # this wrong is worse than it looks: a row even one cell too wide folds,
+        # every panel doubles in height, and the layout smears -- and only once
+        # history has grown past the panel width, so it reads as decay.
+        inner = max(10, width - 2 - (label_w - 1))
 
         # Scale to the window that is actually drawn, not to the whole ring
         # buffer. block_graph plots the last `inner` samples, so deriving the
@@ -115,7 +123,8 @@ class Graph(Static):
         rows = block_graph(history, inner, height, lo, hi, anchor_zero=anchor)
         ramp = RAMP_FOR_ROLE.get(self.role, "default")
 
-        body = Text()
+        # no_wrap: an overwide row must crop, never fold onto a second line.
+        body = Text(no_wrap=True)
         for i, row in enumerate(rows):
             if i == 0:
                 axis = f"{hi:>{label_w - 2}.1f} "
@@ -243,6 +252,7 @@ class GroupPanel(Static):
 class WattopApp(App):
     CSS = """
     Screen { background: $surface; }
+    #graphs   { grid-size: 2; grid-columns: 1fr; grid-rows: auto; height: auto; }
     .graph    { padding: 0 2; }
     #battery  { padding: 1 2 1 2; }
     .panel    { padding: 0 2 1 2; }
@@ -276,16 +286,26 @@ class WattopApp(App):
         self._timer = None
         self._panels: dict[str, GroupPanel] = {}
         self._graphs: list[Graph] = []
+        #: Size from the latest Resize event. `self.size` still reports the old
+        #: window inside on_resize, which left the column count one resize
+        #: behind the terminal.
+        self._viewport = None
 
     def compose(self) -> ComposeResult:
+        # Heaviest first, so that in the two-column layout equal weights end up
+        # sharing a row -- pairing a 40% graph with a 25% one would leave a
+        # ragged gap under the short one.
+        self._graphs = [
+            Graph(tag, role)
+            for tag, role in HEADLINE_ROLES
+            if self.sampler.role(role) is not None
+        ]
+        self._graphs.sort(key=lambda g: -self.graph_weights.get(g.role, 0.0))
         with VerticalScroll():
-            for tag, role in HEADLINE_ROLES:
-                if self.sampler.role(role) is None:
-                    continue
-                graph = Graph(tag, role)
-                graph.add_class("graph")
-                self._graphs.append(graph)
-                yield graph
+            with Grid(id="graphs"):
+                for graph in self._graphs:
+                    graph.add_class("graph")
+                    yield graph
             yield BatteryLine(id="battery")
             for group in self.sampler.groups():
                 # A group whose channels are all headlined needs no panel.
@@ -297,7 +317,10 @@ class WattopApp(App):
                 self._panels[group] = panel
                 yield heading
                 yield panel
-            yield Static("", id="status")
+        # Outside the scroll container: the graphs deliberately overflow the
+        # window, so anything inside it below them -- like this line was once --
+        # is never seen. Poll rate and source failures must stay on screen.
+        yield Static("", id="status")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -305,6 +328,7 @@ class WattopApp(App):
         self.sub_title = platform.node()
         self.sampler.sample()  # prime the rate counters
         self._timer = self.set_interval(self.interval, self.tick)
+        self._apply_columns()
         self.refresh_panels()
 
     def tick(self) -> None:
@@ -313,25 +337,57 @@ class WattopApp(App):
         self.sampler.sample()
         self.refresh_panels()
 
+    def _window(self) -> tuple[int, int]:
+        size = self._viewport or self.size
+        return size.width or 100, size.height or 40
+
+    def _columns(self) -> int:
+        """Two columns in a landscape window, one in portrait.
+
+        A terminal cell is roughly twice as tall as it is wide, so the window
+        only *looks* landscape once its width comfortably exceeds twice its
+        height in cells.
+        """
+        width, height = self._window()
+        return 2 if width >= 2 * height else 1
+
+    def _graph_rows(self) -> list[list[Graph]]:
+        cols = self._columns()
+        return [self._graphs[i : i + cols] for i in range(0, len(self._graphs), cols)]
+
+    def _apply_columns(self) -> None:
+        """Point the grid at the current orientation."""
+        if not self._graphs:
+            return
+        cols = self._columns()
+        self.query_one("#graphs", Grid).styles.grid_size_columns = cols
+        for graph in self._graphs:
+            graph.styles.column_span = 1
+        # An odd graph out takes the whole last row rather than half of it.
+        if cols == 2 and len(self._graphs) % 2:
+            self._graphs[-1].styles.column_span = 2
+
     def _graph_heights(self) -> dict[str, int]:
         """Plot rows for each headline graph.
 
         Weighted roles get a fixed share of the *window*, so "a quarter of the
         screen" stays a quarter regardless of how many rails the machine turns
         out to have. Everything else splits whatever the panels below don't
-        need. If the total overshoots -- a short window, or a lot of rails --
-        the tallest graph gives up rows until it fits.
+        need. Graphs sit two to a row in landscape, so a row costs the taller
+        of its pair. If the total overshoots -- a short window, or a lot of
+        rails -- the tallest graph gives up rows until it fits.
         """
         if not self._graphs:
             return {}
         if self.graph_height:
             return {g.role: max(2, self.graph_height) for g in self._graphs}
 
-        total = self.size.height or 40
-        rows_below = 1 + 1  # battery line + footer
+        rows = self._graph_rows()
+        total = self._window()[1]
+        rows_below = 1 + 2  # battery line + status line + footer
         for group in self._panels:
             rows_below += 1 + len(GroupPanel.members(self.sampler, group))
-        spare = max(len(self._graphs) * (2 + BORDER_ROWS), total - rows_below - 1)
+        spare = max(len(rows) * (2 + BORDER_ROWS), total - rows_below - 1)
 
         heights: dict[str, int] = {}
         for graph in self._graphs:
@@ -340,40 +396,54 @@ class WattopApp(App):
                 heights[graph.role] = max(2, round(total * weight) - BORDER_ROWS)
 
         unweighted = [g.role for g in self._graphs if g.role not in heights]
-        used = sum(h + BORDER_ROWS for h in heights.values())
         if unweighted:
-            each = max(2, (spare - used) // len(unweighted) - BORDER_ROWS)
+            # Rows with a weighted member are spoken for; rows made entirely of
+            # unweighted graphs split whatever window is left.
+            claimed = sum(
+                max(heights[g.role] for g in row if g.role in heights) + BORDER_ROWS
+                for row in rows
+                if any(g.role in heights for g in row)
+            )
+            free_rows = sum(1 for row in rows if not any(g.role in heights for g in row))
+            each = max(2, (spare - claimed) // max(1, free_rows) - BORDER_ROWS)
             for role in unweighted:
                 heights[role] = each
-            used += sum(heights[r] + BORDER_ROWS for r in unweighted)
+
+        def used() -> int:
+            return sum(max(heights[g.role] for g in row) + BORDER_ROWS for row in rows)
 
         # An explicit weight is taken at its word even when the total overflows
         # the window -- the container scrolls. Only unweighted graphs, which are
         # merely filling leftover space, give rows back to make things fit.
-        while used > spare and unweighted and max(heights[r] for r in unweighted) > 2:
+        while used() > spare and unweighted and max(heights[r] for r in unweighted) > 2:
             tallest = max(unweighted, key=lambda r: heights[r])
             heights[tallest] -= 1
-            used -= 1
         return heights
 
     def refresh_panels(self) -> None:
         width = self.size.width or 100
         heights = self._graph_heights()
         for graph in self._graphs:
-            graph.update(graph.render_content(self.sampler, width, heights[graph.role]))
+            # The widget's own content region, not the app width: the graph
+            # cannot know what chrome (scrollbar, padding) sits around it.
+            # Fallback for the on_mount refresh that runs before first layout.
+            gw = graph.content_size.width or (width - 6)
+            graph.update(graph.render_content(self.sampler, gw, heights[graph.role]))
         battery = self.query_one("#battery", BatteryLine)
         battery.update(battery.render_content(self.sampler))
         for group, panel in self._panels.items():
             panel.update(panel.render_content(self.sampler, width))
 
-        bits = [f"{self.interval:g}s"]
+        bits = [f"poll {self.interval:g}s"]
         if self.paused:
             bits.append("PAUSED")
         for name, err in self.sampler.failed.items():
             bits.append(f"!{name}: {err}")
         self.query_one("#status", Static).update("  ".join(bits))
 
-    def on_resize(self) -> None:
+    def on_resize(self, event: events.Resize) -> None:
+        self._viewport = event.size
+        self._apply_columns()
         self.refresh_panels()
 
     def action_toggle_pause(self) -> None:

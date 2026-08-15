@@ -344,12 +344,15 @@ class WattopApp(App):
     def _columns(self) -> int:
         """Two columns in a landscape window, one in portrait.
 
-        A terminal cell is roughly twice as tall as it is wide, so the window
-        only *looks* landscape once its width comfortably exceeds twice its
-        height in cells.
+        A terminal cell is a bit more than twice as tall as it is wide, so a
+        window snapped to the left half of a landscape monitor -- the classic
+        portrait shape -- still measures just over 2:1 in cells. The cutoff
+        sits at 2.5 so that shape stays a single column, while a full-screen
+        terminal (3.5:1 and up) comfortably clears it. The width floor keeps
+        two columns from ever being two unreadably narrow plots.
         """
         width, height = self._window()
-        return 2 if width >= 2 * height else 1
+        return 2 if width >= max(100, 2.5 * height) else 1
 
     def _graph_rows(self) -> list[list[Graph]]:
         cols = self._columns()

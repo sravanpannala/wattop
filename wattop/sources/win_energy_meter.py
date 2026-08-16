@@ -29,7 +29,7 @@ COUNTER_PATH = r"\Energy Meter(*)\Power"
 #: Rails whose meaning we know, so they can be headlined rather than dumped in
 #: with the rest. Anything not listed here lands in "rails" and still shows up.
 _KNOWN = {
-    "PSU_USB": ("Charger in", "in", "power_in", 100.0),
+    "PSU_USB": ("Charger in", "in", "power_in", 60.0),
     "SYS": ("System", "out", "power_out", 60.0),
 }
 _SKIP = {"_total"}

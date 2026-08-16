@@ -22,10 +22,10 @@ from textual.widgets import Footer, Static
 from wattop.core.sampler import Sampler
 from wattop.render import (
     bar,
-    block_graph,
+    braille_graph,
     format_eta,
-    graph_bounds,
     group_title,
+    nice_ceil,
     ramp_color,
     sparkline,
     value_style,
@@ -80,7 +80,8 @@ DEFAULT_GRAPH_WEIGHTS = {
 #: Every panel costs a top and bottom border on top of its plot rows.
 BORDER_ROWS = 2
 
-#: Which colour ramp each headline graph uses.
+#: Which colour ramp each headline graph uses. Battery is the discharge colour;
+#: while charging the graph switches to the green power_in ramp instead.
 RAMP_FOR_ROLE = {
     "power_in": "power_in",
     "power_out": "power_out",
@@ -96,6 +97,9 @@ class Graph(Static):
         super().__init__(id=f"graph-{role}")
         self.tag = tag
         self.role = role
+        #: Highest value seen this run -- the fixed axis ceiling. Ratchets up,
+        #: never down, so the scale stays put instead of rescaling every frame.
+        self.peak = 0.0
 
     def render_content(self, sampler: Sampler, width: int, height: int) -> Panel:
         ch = sampler.role(self.role)
@@ -111,17 +115,48 @@ class Graph(Static):
         # history has grown past the panel width, so it reads as decay.
         inner = max(10, width - 2 - (label_w - 1))
 
-        # Scale to the window that is actually drawn, not to the whole ring
-        # buffer. block_graph plots the last `inner` samples, so deriving the
-        # axis from all 240 let long-gone spikes squash the visible bars into a
-        # band -- graphs that looked fine at startup drifted out of shape as the
-        # history outgrew the panel width.
-        history = list(sampler.history[ch.key])[-inner:] or [values.get(ch.key, 0.0)]
-        anchor = ch.unit in ("W", "A")
-        lo, hi = graph_bounds(history, anchor_zero=anchor)
+        # Braille packs two samples into each cell, so the window is twice the
+        # panel's inner width.
+        history = list(sampler.history[ch.key])[-inner * 2 :] or [values.get(ch.key, 0.0)]
+        current = values.get(ch.key)
 
-        rows = block_graph(history, inner, height, lo, hi, anchor_zero=anchor)
+        # Battery power plots as magnitude: the graph shows how hard the battery
+        # is working, and the colour -- not the direction of the bars -- says
+        # which way the energy is flowing.
+        charging = None
+        if self.role == "battery_power":
+            ref = current if current is not None else history[-1]
+            charging = ref >= 0
+            history = [abs(v) for v in history]
+
+        # Fixed axis, floor at zero. A channel that declares nominal_max gets
+        # exactly that as its ceiling, forever -- pin one in config.toml with
+        # [overrides."<key>"] nominal_max = 60 for a truly constant scale.
+        # A battery with no ceiling of its own borrows OUT's: discharge is
+        # bounded by what the system draws, and sharing the scale makes the two
+        # graphs directly comparable. Temperature defaults to 100: silicon
+        # throttles just below it, so 0-100 degC is the whole meaningful range
+        # and the graph height doubles as "how close to too hot". Failing all
+        # of those, the ceiling is the run's peak snapped up to the 1/2/5 grid:
+        # it jumps to a round number early (25, 50, 100) and then holds, rather
+        # than creeping upward every time a sample sets a new record.
+        lo = 0.0
+        ceiling = ch.nominal_max
+        if not ceiling and self.role == "battery_power":
+            out = sampler.role("power_out")
+            ceiling = out.nominal_max if out else None
+        if not ceiling and self.role == "temperature":
+            ceiling = 100.0
+        if ceiling:
+            hi = ceiling
+        else:
+            self.peak = max(self.peak, max(history))
+            hi = nice_ceil(self.peak)
+
+        rows = braille_graph(history, inner, height, lo, hi)
         ramp = RAMP_FOR_ROLE.get(self.role, "default")
+        if charging is not None:
+            ramp = "power_in" if charging else "battery"
 
         # no_wrap: an overwide row must crop, never fold onto a second line.
         body = Text(no_wrap=True)
@@ -139,11 +174,12 @@ class Graph(Static):
             if i < height - 1:
                 body.append("\n")
 
-        current = values.get(ch.key)
         title = Text.assemble((self.tag, "bold"), (f"  {ch.label}", "dim"))
         subtitle = Text(ch.format(current), style=value_style(ch, current or 0.0))
-        if ch.nominal_max and current is not None:
-            subtitle.append(" " + bar(abs(current), ch.nominal_max, 10), style="dim")
+        if current is not None:
+            # Gauge against the axis ceiling, whatever resolved it -- so the
+            # battery's borrowed scale gets the same bar OUT has.
+            subtitle.append(" " + bar(abs(current), hi, 10), style="dim")
         return Panel(
             body,
             title=title,
@@ -254,7 +290,7 @@ class WattopApp(App):
     Screen { background: $surface; }
     #graphs   { grid-size: 2; grid-columns: 1fr; grid-rows: auto; height: auto; }
     .graph    { padding: 0 2; }
-    #battery  { padding: 1 2 1 2; }
+    #battery  { padding: 0 2 1 2; }
     .panel    { padding: 0 2 1 2; }
     .heading  { color: $accent; text-style: bold; padding: 0 2; }
     #status   { color: $text-muted; padding: 0 2; }
@@ -302,11 +338,11 @@ class WattopApp(App):
         ]
         self._graphs.sort(key=lambda g: -self.graph_weights.get(g.role, 0.0))
         with VerticalScroll():
+            yield BatteryLine(id="battery")
             with Grid(id="graphs"):
                 for graph in self._graphs:
                     graph.add_class("graph")
                     yield graph
-            yield BatteryLine(id="battery")
             for group in self.sampler.groups():
                 # A group whose channels are all headlined needs no panel.
                 if not GroupPanel.members(self.sampler, group):

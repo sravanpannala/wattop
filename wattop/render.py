@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from wattop.core.channel import Channel
 from wattop.core.sampler import Sampler
 
@@ -56,6 +58,24 @@ GRADIENTS = {
     "temperature": ["#1b5e20", "#558b2f", "#9e9d24", "#f9a825", "#ef6c00", "#e64a19", "#c62828"],
     "default": ["#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"],
 }
+
+
+def nice_ceil(value: float) -> float:
+    """Smallest 1-2-5 x 10^k at or above `value` -- a stable axis ceiling.
+
+    A running max creeps: every record redraws the scale, one sample at a time.
+    Snapped to the 1/2/5 grid the ceiling lands on a round number (25, 50, 100)
+    and stays there until a reading clears the whole step, so the axis reads as
+    fixed rather than breathing.
+    """
+    if value <= 0:
+        return 1.0
+    exp = math.floor(math.log10(value))
+    for mult in (1.0, 2.0, 5.0, 10.0):
+        cand = mult * 10.0**exp
+        if cand >= value * (1 - 1e-9):
+            return cand
+    return 10.0 ** (exp + 1)  # unreachable; the loop always hits
 
 
 def graph_bounds(data, anchor_zero: bool = False) -> tuple[float, float]:
@@ -153,6 +173,72 @@ def block_graph(
                 # hanging from the ceiling of the cell: only two glyphs exist
                 out.append(DOWN_HALF if filled >= 3 else DOWN_EIGHTH)
     return ["".join(row) for row in cells]
+
+
+#: Braille dot masks for a column filled bottom-up with 0..4 dots. A braille
+#: cell is 2 dots wide by 4 tall; the left column is dots 1/2/3/7, the right
+#: 4/5/6/8, numbered top-down but filled here from the floor.
+BRAILLE_LEFT = (0x00, 0x40, 0x44, 0x46, 0x47)
+BRAILLE_RIGHT = (0x00, 0x80, 0xA0, 0xB0, 0xB8)
+
+
+def braille_graph(
+    values,
+    width: int,
+    height: int,
+    lo: float | None = None,
+    hi: float | None = None,
+) -> list[str]:
+    """A btop-style braille area graph, `height` rows tall.
+
+    Same contract as `block_graph` -- `height` strings, top row first, one
+    string per row so the caller can paint each row with a single style -- but
+    drawn in braille cells: two samples per column and quarter-cell vertical
+    steps, so the same panel shows twice the history at finer grain.
+
+    Bars grow from `lo` at the floor; values are clamped to [lo, hi]. Every
+    sample leaves at least one dot, so a quiet rail reads as a floor line
+    rather than a dead sensor.
+
+    Time runs right-to-left: a new sample enters at the left edge and pushes
+    the existing history rightward off the panel.
+    """
+    data = list(values)[-width * 2 :]
+    if not data or height < 1:
+        return ["" for _ in range(height)]
+    if lo is None or hi is None:
+        auto_lo, auto_hi = graph_bounds(data)
+        lo = auto_lo if lo is None else lo
+        hi = auto_hi if hi is None else hi
+    if hi <= lo:
+        hi = lo + 1e-9
+
+    quarters = height * 4
+
+    def dots(v: float | None) -> int:
+        if v is None:  # the pad half-cell at the tail of an odd-length window
+            return 0
+        frac = (v - lo) / (hi - lo)
+        return max(1, min(quarters, round(frac * quarters)))
+
+    # Newest first, so fresh samples appear at the left edge. The pad half-cell
+    # goes on the tail (the oldest, rightmost edge) so the newest sample always
+    # sits in the left half of the first cell.
+    data.reverse()
+    if len(data) % 2:
+        data.append(None)
+    cols = [(dots(data[i]), dots(data[i + 1])) for i in range(0, len(data), 2)]
+
+    rows = []
+    for row in range(height - 1, -1, -1):  # build top row first
+        base = row * 4
+        line = []
+        for left, right in cols:
+            ld = max(0, min(4, left - base))
+            rd = max(0, min(4, right - base))
+            line.append(chr(0x2800 + BRAILLE_LEFT[ld] + BRAILLE_RIGHT[rd]) if ld or rd else " ")
+        rows.append("".join(line))
+    return rows
 
 
 def ramp_color(kind: str, index: int, height: int) -> str:

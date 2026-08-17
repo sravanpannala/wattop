@@ -200,8 +200,9 @@ def braille_graph(
     sample leaves at least one dot, so a quiet rail reads as a floor line
     rather than a dead sensor.
 
-    Time runs right-to-left: a new sample enters at the left edge and pushes
-    the existing history rightward off the panel.
+    Time runs left-to-right: a new sample enters at the right edge and the
+    existing history slides leftward off the panel. Rows are right-aligned to
+    `width` so a short history hugs the right edge from the first sample.
     """
     data = list(values)[-width * 2 :]
     if not data or height < 1:
@@ -216,23 +217,24 @@ def braille_graph(
     quarters = height * 4
 
     def dots(v: float | None) -> int:
-        if v is None:  # the pad half-cell at the tail of an odd-length window
+        if v is None:  # the pad half-cell at the head of an odd-length window
             return 0
         frac = (v - lo) / (hi - lo)
         return max(1, min(quarters, round(frac * quarters)))
 
-    # Newest first, so fresh samples appear at the left edge. The pad half-cell
-    # goes on the tail (the oldest, rightmost edge) so the newest sample always
-    # sits in the left half of the first cell.
-    data.reverse()
+    # Oldest to newest, so fresh samples appear at the right edge. The pad
+    # half-cell goes on the head (the oldest, leftmost edge), anchoring the
+    # cell pairing to the newest sample: each tick every sample moves left by
+    # exactly half a cell, a smooth scroll rather than columns re-pairing.
     if len(data) % 2:
-        data.append(None)
+        data.insert(0, None)
     cols = [(dots(data[i]), dots(data[i + 1])) for i in range(0, len(data), 2)]
 
+    pad = " " * (width - len(cols))  # short history hugs the right edge
     rows = []
     for row in range(height - 1, -1, -1):  # build top row first
         base = row * 4
-        line = []
+        line = [pad]
         for left, right in cols:
             ld = max(0, min(4, left - base))
             rd = max(0, min(4, right - base))

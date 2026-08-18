@@ -362,10 +362,24 @@ class WattopApp(App):
     def on_mount(self) -> None:
         self.title = "wattop"
         self.sub_title = platform.node()
+        self._set_terminal_title("wattop")
         self.sampler.sample()  # prime the rate counters
         self._timer = self.set_interval(self.interval, self.tick)
         self._apply_columns()
         self.refresh_panels()
+
+    def on_unmount(self) -> None:
+        # An empty title makes the terminal fall back to naming the tab after
+        # the foreground process, i.e. the shell we are returning to.
+        self._set_terminal_title("")
+
+    def _set_terminal_title(self, title: str) -> None:
+        """Textual's `title` only reaches the in-app header, not the terminal,
+        so tabs otherwise show the process name: python.exe."""
+        try:
+            self._driver.write(f"\x1b]0;{title}\x07")
+        except Exception:
+            pass  # no driver in headless tests, or already torn down on exit
 
     def tick(self) -> None:
         if self.paused:

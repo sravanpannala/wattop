@@ -51,9 +51,9 @@ battery_power = 0.25
 `--graph-height N` pins every graph instead.
 
 Every headline graph is floored at zero on a fixed axis, so bar height means watts and one frame is
-comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-20 W by default, which is
+comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-25 W by default, which is
 where the machine spends most of its life and where a single tall axis would squash everything into
-the bottom third, and 0-60 W for as long as the window on screen holds a sample above 20 W. Each
+the bottom third, and 0-60 W for as long as the window on screen holds a sample above 25 W. Each
 picks its own rung from its own window, so a burst on one leaves the other where it was, and once
 the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares and **TEMP**
 runs 0-100 degC, since silicon throttles just below that and the graph height doubles as "how close

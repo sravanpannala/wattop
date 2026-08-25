@@ -89,20 +89,25 @@ RAMP_FOR_ROLE = {
     "temperature": "temperature",
 }
 
-#: The power graphs live on a two-rung ladder. 0-20 W covers ordinary
+#: The power graphs live on a two-rung ladder. 0-25 W covers ordinary
 #: idle-to-light-load draw at full vertical resolution -- the range the machine
 #: actually sits in most of the time, which on a single tall axis is squashed
 #: into the bottom third. 0-60 W opens up only while a burst needs the headroom.
 #: The rungs are absolute rather than derived, so OUT and BATT stay directly
 #: comparable while each still picks its own.
-POWER_STEPS = (20.0, 60.0)
+#:
+#: The short rung sits above the idle band rather than inside it: measured idle
+#: on this machine runs 15-19 W with the odd excursion to ~22, so a 20 W rung
+#: would be crossed every few seconds and the graph would live on 60 W for the
+#: sake of a blip. A rung is only useful where the data is not.
+POWER_STEPS = (25.0, 60.0)
 
 #: Roles on that ladder. IN keeps whatever nominal_max its source declares and
 #: TEMP keeps 0-100.
 STEPPED_ROLES = frozenset({"power_out", "battery_power"})
 
 #: Step back down only once the window max has cleared 10% below the lower rung,
-#: so a series parked around 20 W does not flip the axis on alternate frames.
+#: so a series parked right at a rung does not flip the axis on alternate frames.
 STEP_HYSTERESIS = 0.9
 
 
@@ -125,7 +130,7 @@ class Graph(Static):
 
         Steps up the instant the window clears the current rung. Steps back down
         only once the peak has fallen clear of the band below the shorter rung --
-        a series hovering right at 20 W would otherwise flip the axis on
+        a series hovering right at a rung would otherwise flip the axis on
         alternate frames, which reads as a glitch rather than as a scale change.
         """
         target = next((s for s in POWER_STEPS if peak <= s), POWER_STEPS[-1])

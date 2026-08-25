@@ -89,6 +89,22 @@ RAMP_FOR_ROLE = {
     "temperature": "temperature",
 }
 
+#: The power graphs live on a two-rung ladder. 0-20 W covers ordinary
+#: idle-to-light-load draw at full vertical resolution -- the range the machine
+#: actually sits in most of the time, which on a single tall axis is squashed
+#: into the bottom third. 0-60 W opens up only while a burst needs the headroom.
+#: The rungs are absolute rather than derived, so OUT and BATT stay directly
+#: comparable while each still picks its own.
+POWER_STEPS = (20.0, 60.0)
+
+#: Roles on that ladder. IN keeps whatever nominal_max its source declares and
+#: TEMP keeps 0-100.
+STEPPED_ROLES = frozenset({"power_out", "battery_power"})
+
+#: Step back down only once the window max has cleared 10% below the lower rung,
+#: so a series parked around 20 W does not flip the axis on alternate frames.
+STEP_HYSTERESIS = 0.9
+
 
 class Graph(Static):
     """One headline channel as a full-height btop-style area graph."""
@@ -100,6 +116,23 @@ class Graph(Static):
         #: Highest value seen this run -- the fixed axis ceiling. Ratchets up,
         #: never down, so the scale stays put instead of rescaling every frame.
         self.peak = 0.0
+        #: The rung currently held, for the roles on POWER_STEPS. Carried across
+        #: frames purely so the hysteresis band has something to compare to.
+        self.rung = POWER_STEPS[0]
+
+    def _rung(self, peak: float) -> float:
+        """Smallest rung at or above `peak`, capped at the tallest one.
+
+        Steps up the instant the window clears the current rung. Steps back down
+        only once the peak has fallen clear of the band below the shorter rung --
+        a series hovering right at 20 W would otherwise flip the axis on
+        alternate frames, which reads as a glitch rather than as a scale change.
+        """
+        target = next((s for s in POWER_STEPS if peak <= s), POWER_STEPS[-1])
+        if target < self.rung and peak > target * STEP_HYSTERESIS:
+            return self.rung  # inside the dead band -- hold the taller axis
+        self.rung = target
+        return target
 
     def render_content(self, sampler: Sampler, width: int, height: int) -> Panel:
         ch = sampler.role(self.role)
@@ -129,29 +162,42 @@ class Graph(Static):
             charging = ref >= 0
             history = [abs(v) for v in history]
 
-        # Fixed axis, floor at zero. A channel that declares nominal_max gets
-        # exactly that as its ceiling, forever -- pin one in config.toml with
-        # [overrides."<key>"] nominal_max = 60 for a truly constant scale.
-        # A battery with no ceiling of its own borrows OUT's: discharge is
-        # bounded by what the system draws, and sharing the scale makes the two
-        # graphs directly comparable. Temperature defaults to 100: silicon
-        # throttles just below it, so 0-100 degC is the whole meaningful range
-        # and the graph height doubles as "how close to too hot". Failing all
-        # of those, the ceiling is the run's peak snapped up to the 1/2/5 grid:
-        # it jumps to a round number early (25, 50, 100) and then holds, rather
-        # than creeping upward every time a sample sets a new record.
+        # Fixed axis, floor at zero, resolved in four steps.
+        #
+        # A ceiling pinned in config.toml with [overrides."<key>"] nominal_max
+        # wins outright -- it is the one ceiling the user asked for by name, so
+        # nothing below gets to second-guess it.
+        #
+        # OUT and BATT then take a rung off POWER_STEPS, chosen from the window
+        # on screen rather than from the run: the tall axis is there for the
+        # burst being drawn, and once that burst has scrolled off, holding 0-60
+        # only buys back the empty two thirds it was opened to avoid. Each graph
+        # reads its own window, so a spike on one leaves the other alone.
+        #
+        # Otherwise a channel that declares nominal_max gets exactly that,
+        # forever, and temperature defaults to 100: silicon throttles just below
+        # it, so 0-100 degC is the whole meaningful range and the graph height
+        # doubles as "how close to too hot". Failing all of those, the ceiling is
+        # the run's peak snapped up to the 1/2/5 grid: it jumps to a round number
+        # early (25, 50, 100) and then holds, rather than creeping upward every
+        # time a sample sets a new record.
         lo = 0.0
-        ceiling = ch.nominal_max
-        if not ceiling and self.role == "battery_power":
-            out = sampler.role("power_out")
-            ceiling = out.nominal_max if out else None
-        if not ceiling and self.role == "temperature":
-            ceiling = 100.0
-        if ceiling:
-            hi = ceiling
+        pinned = sampler.overrides.get(ch.key, {}).get("nominal_max")
+        if pinned:
+            hi = float(pinned)
+        elif self.role in STEPPED_ROLES:
+            # After the magnitude pass above, so BATT picks its rung on how hard
+            # the battery is working rather than on which way it is flowing.
+            hi = self._rung(max(history))
         else:
-            self.peak = max(self.peak, max(history))
-            hi = nice_ceil(self.peak)
+            ceiling = ch.nominal_max
+            if not ceiling and self.role == "temperature":
+                ceiling = 100.0
+            if ceiling:
+                hi = ceiling
+            else:
+                self.peak = max(self.peak, max(history))
+                hi = nice_ceil(self.peak)
 
         rows = braille_graph(history, inner, height, lo, hi)
         ramp = RAMP_FOR_ROLE.get(self.role, "default")

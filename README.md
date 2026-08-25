@@ -48,10 +48,20 @@ power_out = 0.25
 battery_power = 0.25
 ```
 
-`--graph-height N` pins every graph instead. Graphs scale to the window rather than to zero: a rail
-sitting at 59.5 W plotted from zero fills every cell and tells you nothing. Both bounds are printed
-on the axis, so what you are looking at is never ambiguous. A battery that has been discharging the
-whole window hangs its bars from the top edge, because zero is then above the plot.
+`--graph-height N` pins every graph instead.
+
+Every headline graph is floored at zero on a fixed axis, so bar height means watts and one frame is
+comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-20 W by default, which is
+where the machine spends most of its life and where a single tall axis would squash everything into
+the bottom third, and 0-60 W for as long as the window on screen holds a sample above 20 W. Each
+picks its own rung from its own window, so a burst on one leaves the other where it was, and once
+the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares and **TEMP**
+runs 0-100 degC, since silicon throttles just below that and the graph height doubles as "how close
+to too hot". Both bounds are printed on the axis, so what you are looking at is never ambiguous.
+
+**BATT** plots magnitude — how hard the battery is working — and lets colour carry the direction:
+amber discharging, green charging. Pin any ceiling you would rather set yourself with
+`[overrides."<key>"] nominal_max`, and the ladder steps aside.
 
 ## What it can read
 

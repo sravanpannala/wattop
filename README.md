@@ -50,14 +50,16 @@ battery_power = 0.25
 
 `--graph-height N` pins every graph instead.
 
-Every headline graph is floored at zero on a fixed axis, so bar height means watts and one frame is
+Every power graph is floored at zero on a fixed axis, so bar height means watts and one frame is
 comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-25 W by default, which is
 where the machine spends most of its life and where a single tall axis would squash everything into
 the bottom third, and 0-60 W for as long as the window on screen holds a sample above 25 W. Each
 picks its own rung from its own window, so a burst on one leaves the other where it was, and once
-the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares and **TEMP**
-runs 0-100 degC, since silicon throttles just below that and the graph height doubles as "how close
-to too hot". Both bounds are printed on the axis, so what you are looking at is never ambiguous.
+the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares. **TEMP** is
+the one graph that does not start at zero -- it runs a fixed 40-100 degC, since the hottest sensor
+in a running machine never approaches zero and silicon throttles just under 100, so the panel height
+is all live range and doubles as "how close to too hot". Both bounds are printed on the axis, so
+what you are looking at is never ambiguous.
 
 **BATT** plots magnitude — how hard the battery is working — and lets colour carry the direction:
 amber discharging, green charging. Pin any ceiling you would rather set yourself with

@@ -103,8 +103,17 @@ RAMP_FOR_ROLE = {
 POWER_STEPS = (25.0, 60.0)
 
 #: Roles on that ladder. IN keeps whatever nominal_max its source declares and
-#: TEMP keeps 0-100.
+#: TEMP keeps its own fixed span.
 STEPPED_ROLES = frozenset({"power_out", "battery_power"})
+
+#: The TEMP graph's fixed span. Unlike the power ladder this never moves -- it is
+#: a scale, not a rung. Watts are floored at zero because zero watts is a real
+#: reading; the hottest sensor in a running machine is never anywhere near zero
+#: degC, so the bottom two fifths of a 0-100 axis is dead space. Measured idle
+#: here sits around 47 degC, so 40 clears the idle band from below, and silicon
+#: throttles just under 100 -- between them the full panel height maps onto the
+#: range that actually varies, and the top of the graph still means too hot.
+TEMP_RANGE = (40.0, 100.0)
 
 #: Step back down only once the window max has cleared 10% below the lower rung,
 #: so a series parked right at a rung does not flip the axis on alternate frames.
@@ -180,13 +189,13 @@ class Graph(Static):
         # reads its own window, so a spike on one leaves the other alone.
         #
         # Otherwise a channel that declares nominal_max gets exactly that,
-        # forever, and temperature defaults to 100: silicon throttles just below
-        # it, so 0-100 degC is the whole meaningful range and the graph height
-        # doubles as "how close to too hot". Failing all of those, the ceiling is
-        # the run's peak snapped up to the 1/2/5 grid: it jumps to a round number
-        # early (25, 50, 100) and then holds, rather than creeping upward every
-        # time a sample sets a new record.
-        lo = 0.0
+        # forever, and temperature falls back to TEMP_RANGE -- the one graph that
+        # does not start at zero, since it is the only one whose floor is not a
+        # reading it can take. Failing all of those, the ceiling is the run's peak
+        # snapped up to the 1/2/5 grid: it jumps to a round number early (25, 50,
+        # 100) and then holds, rather than creeping upward every time a sample
+        # sets a new record.
+        lo = TEMP_RANGE[0] if self.role == "temperature" else 0.0
         pinned = sampler.overrides.get(ch.key, {}).get("nominal_max")
         if pinned:
             hi = float(pinned)
@@ -197,7 +206,7 @@ class Graph(Static):
         else:
             ceiling = ch.nominal_max
             if not ceiling and self.role == "temperature":
-                ceiling = 100.0
+                ceiling = TEMP_RANGE[1]
             if ceiling:
                 hi = ceiling
             else:
@@ -228,9 +237,11 @@ class Graph(Static):
         title = Text.assemble((self.tag, "bold"), (f"  {ch.label}", "dim"))
         subtitle = Text(ch.format(current), style=value_style(ch, current or 0.0))
         if current is not None:
-            # Gauge against the axis ceiling, whatever resolved it -- so the
-            # battery's borrowed scale gets the same bar OUT has.
-            subtitle.append(" " + bar(abs(current), hi, 10), style="dim")
+            # Gauge across the axis span, whatever resolved it -- so the
+            # battery's borrowed scale gets the same bar OUT has, and TEMP's bar
+            # agrees with its own trace instead of measuring from a zero that is
+            # not on the axis.
+            subtitle.append(" " + bar(abs(current) - lo, hi - lo, 10), style="dim")
         return Panel(
             body,
             title=title,

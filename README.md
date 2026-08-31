@@ -77,9 +77,20 @@ amber discharging, green charging. Pin any ceiling you would rather set yourself
 | `emi.SYS` | system rail |
 | `emi.USBC_TOTAL`, `emi.CPU_CLUSTER_0..2`, `emi.GPU` | per-rail SoC power |
 | `batt.power` / `.voltage` / `.current` / `.charge` / `.level` / `.temp` / `.cycles` | the battery device, via `IOCTL_BATTERY_QUERY_STATUS` |
+| `batt.eta.avg` | time left, from battery watts averaged over a growing window |
 
 Battery `Rate` is signed, so discharging falls out of the sign and current is a real division rather
 than an estimate. Everything works **without administrator rights** and costs about 0.1 ms a sample.
+
+The one reading wattop computes rather than reads is **time left**. Windows will hand you a
+`BatteryEstimatedTime`, but it is derived from the instantaneous rate, and an idle machine breathing
+between 15 and 25 W makes that estimate swing by the better part of an hour from one second to the
+next -- measured here, 55 minutes of swing across 45 seconds of sitting still. So `batt.eta.avg`
+averages the *watts* over a window that grows to five minutes from the last plug/unplug and rolls
+after that, and divides once. Averaging the rate rather than the estimate is the point: time left is
+hyperbolic in power, so a single near-idle sample is an absurd ETA but an unremarkable watt figure.
+The same average against the charging rate gives a time to full, which Windows does not offer at
+all. Set `eta_window` in `config.toml` to trade steadiness against how fast it notices a new load.
 
 **Linux** — `/sys/class/hwmon` is walked and everything found is exposed, so the headline number on
 an AMD APU is `power1_average` from the `amdgpu` node (package power, the same PPT figure `ryzenadj`
@@ -125,8 +136,9 @@ In the TUI: `q` quit, `p` pause, `+`/`-` change the interval.
 
 The UI never names a sensor. It lays out by **group** (`in`, `out`, `battery`, `rails`, `thermal`)
 and headlines whatever fills each **role** (`power_in`, `power_out`, `battery_power`,
-`battery_voltage`, `battery_current`, `battery_charge`, `battery_level`, `ac_online`). So a new
-reading only ever needs to declare where it belongs, and the display follows.
+`battery_voltage`, `battery_current`, `battery_charge`, `battery_level`, `battery_eta`,
+`ac_online`). So a new reading only ever needs to declare where it belongs, and the display
+follows.
 
 That makes adding one come in three sizes.
 

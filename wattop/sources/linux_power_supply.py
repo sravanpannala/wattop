@@ -29,6 +29,7 @@ class PowerSupplySource:
         self._battery: Path | None = None
         self._mains: list[Path] = []
         self._full: float | None = None
+        self._nominal_v: float | None = None
 
     def available(self) -> bool:
         if sys.platform == "win32" or not self._root.is_dir():
@@ -40,10 +41,30 @@ class PowerSupplySource:
             elif kind == "Mains":
                 self._mains.append(node)
         if self._battery is not None:
-            self._full = _num(self._battery / "energy_full", 1e-6) or _num(
-                self._battery / "charge_full", 1e-6
+            # `voltage_min_design` is what turns the charge-reporting flavour of
+            # this interface into watt-hours; cached because it never moves.
+            self._nominal_v = _num(self._battery / "voltage_min_design", 1e-6) or _num(
+                self._battery / "voltage_now", 1e-6
+            )
+            self._full = self._energy(
+                _num(self._battery / "energy_full", 1e-6),
+                _num(self._battery / "charge_full", 1e-6),
             )
         return self._battery is not None or bool(self._mains)
+
+    def _energy(self, energy: float | None, charge: float | None) -> float | None:
+        """Watt-hours, from whichever of the two pairs this pack exposes.
+
+        Only `energy_*` is already in watt-hours. `charge_*` is amp-hours, and
+        was being reported as Wh -- harmless while it was just a gauge label,
+        but the time-left estimate divides watt-hours by watts, and amp-hours
+        divided by watts is not a time.
+        """
+        if energy is not None:
+            return energy
+        if charge is not None and self._nominal_v:
+            return charge * self._nominal_v
+        return None
 
     def channels(self) -> list[Channel]:
         out: list[Channel] = []
@@ -65,6 +86,10 @@ class PowerSupplySource:
                 ),
                 Channel("batt.level", "Level", "%", "battery", "battery_level", 1, nominal_max=100.0),
             ]
+            if self._full:
+                out.append(
+                    Channel("batt.full", "Full charge", "Wh", "battery", None, 2, static=True)
+                )
             if (self._battery / "temp").exists():
                 out.append(Channel("batt.temp", "Batt temp", "degC", "thermal", None, 1))
         if self._mains:
@@ -89,10 +114,13 @@ class PowerSupplySource:
                 out["batt.voltage"] = voltage
                 if power is not None and voltage:
                     out["batt.current"] = power / voltage
-            charge = _num(bat / "energy_now", 1e-6) or _num(bat / "charge_now", 1e-6)
+            charge = self._energy(
+                _num(bat / "energy_now", 1e-6), _num(bat / "charge_now", 1e-6)
+            )
             if charge is not None:
                 out["batt.charge"] = charge
                 if self._full:
+                    out["batt.full"] = self._full
                     out["batt.level"] = 100.0 * charge / self._full
             level = _num(bat / "capacity", 1.0)
             if level is not None:

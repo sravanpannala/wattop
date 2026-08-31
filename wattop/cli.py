@@ -73,7 +73,7 @@ def make_sampler(args):
         history_len=history,
         overrides=cfg.overrides,
     )
-    attach_builtin_aggregates(sampler)
+    attach_builtin_aggregates(sampler, eta_window=cfg.eta_window)
     if cfg.path is not None:
         log.debug("config loaded from %s", cfg.path)
     return sampler, interval, cfg

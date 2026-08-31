@@ -24,6 +24,7 @@ ROLES = (
     "battery_current",
     "battery_charge",  # remaining energy
     "battery_level",  # percent
+    "battery_eta",  # signed seconds: positive to empty, negative to full
     "ac_online",
     "temperature",  # the sensor worth watching, usually the hottest one
 )

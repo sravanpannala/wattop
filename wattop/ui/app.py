@@ -19,6 +19,7 @@ from textual.containers import Grid, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Static
 
+from wattop.core.aggregates import ETA_KEY
 from wattop.core.sampler import Sampler
 from wattop.render import (
     bar,
@@ -49,11 +50,12 @@ CONSUMED_ROLES = frozenset(
         "battery_current",
         "battery_charge",
         "battery_level",
+        "battery_eta",
         "ac_online",
         "temperature",
     }
 )
-CONSUMED_KEYS = frozenset({"batt.eta", "batt.full"})
+CONSUMED_KEYS = frozenset({"batt.eta", ETA_KEY, "batt.full"})
 
 
 #: Fraction of the window each headline graph gets, as *height*. In a landscape
@@ -256,6 +258,32 @@ class Graph(Static):
 class BatteryLine(Static):
     """Volts, amps, charge and state -- only drawn if a battery exists."""
 
+    #: Last time-left figure actually put on screen. See `_hold`.
+    _shown_eta: float | None = None
+
+    def _hold(self, seconds: float) -> float:
+        """Keep the shown figure still until it has really moved.
+
+        Averaging fixes the estimate; it does not freeze it. A five-minute mean
+        still wanders a percent or so a tick, and `format_eta` truncating to
+        whole minutes is not a wide enough deadband to hide that -- one minute
+        is 0.3% of a five-hour estimate, so the last digit would still crawl.
+        Hold the last value until the new one is a displayed minute away, or 2%
+        away, whichever is larger.
+
+        Because the underlying figure trends one way, every breach steps in that
+        direction: it reads as a countdown, not as flicker. This lives here and
+        not in the estimator because it is a fact about eyes, not about
+        batteries -- `--log` and `--json` keep the full-resolution series, the
+        way `Graph.peak` keeps the axis steady without touching the data.
+        """
+        shown = self._shown_eta
+        if shown is None or (shown < 0) != (seconds < 0):
+            self._shown_eta = seconds  # first reading, or charging flipped to not
+        elif abs(seconds - shown) >= max(60.0, 0.02 * abs(shown)):
+            self._shown_eta = seconds
+        return self._shown_eta
+
     def render_content(self, sampler: Sampler) -> Table | Text:
         values = sampler.latest.values
         table = Table.grid(padding=(0, 2))
@@ -287,11 +315,23 @@ class BatteryLine(Static):
                 state = "charging" if p > 0.05 else "discharging" if p < -0.05 else state
             parts.append(Text(state, style="green" if online else "yellow"))
 
-        eta = sampler.channels.get("batt.eta")
-        if eta and eta.key in values:
-            pretty = format_eta(values[eta.key])
+        # The averaged estimate owns the `battery_eta` role; falling back to the
+        # firmware's own key keeps the line populated on hardware where the
+        # aggregate could not attach (a pack that reports only percentages).
+        smoothed = sampler.role("battery_eta")
+        seconds = values.get(smoothed.key if smoothed else "batt.eta")
+        if seconds is None:
+            # Forget the held figure, so the next estimate is not measured
+            # against one belonging to the other side of a plug/unplug.
+            self._shown_eta = None
+        else:
+            if smoothed is not None:
+                seconds = self._hold(seconds)
+            pretty = format_eta(abs(seconds))
             if pretty != "--":
-                parts.append(Text(f"{pretty} left", style="dim"))
+                # Negative is time to full -- see the estimator.
+                suffix = "to full" if seconds < 0 else "left"
+                parts.append(Text(f"{pretty} {suffix}", style="dim"))
 
         if not parts:
             return Text("")

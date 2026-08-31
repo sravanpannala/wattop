@@ -9,6 +9,13 @@
 interval = 1.0    # seconds between samples
 history  = 240    # samples kept for the graphs
 
+# Seconds of battery power averaged into the "time left" figure. The window
+# grows to this from the last plug/unplug, then rolls. Longer is steadier and
+# slower to notice that the load changed; shorter tracks a change sooner and
+# wanders more. The firmware's own estimate uses the instantaneous rate, which
+# is why it swings by an hour between one second and the next.
+eta_window = 300.0
+
 # Fraction of the window height each headline graph gets. Roles left out share
 # whatever the panels below do not need. Defaults shown.
 [graphs]
@@ -22,7 +29,8 @@ battery_power = 0.25
 #              nominal_max
 #   group  = in | out | battery | rails | thermal | other   -> which panel
 #   role   = power_in | power_out | battery_power | battery_voltage |
-#            battery_current | battery_charge | battery_level | ac_online
+#            battery_current | battery_charge | battery_level | battery_eta |
+#            ac_online
 #            -> the headline slot this fills, if any
 #   scale/offset are applied as  value * scale + offset
 # ---------------------------------------------------------------------------

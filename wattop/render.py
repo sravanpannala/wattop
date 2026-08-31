@@ -344,9 +344,18 @@ def group_title(group: str) -> str:
     }.get(group, group.upper())
 
 
+#: Windows reports "no idea" as an all-ones 32-bit field. The battery source
+#: filters it long before it reaches here, but a config-declared sensor could
+#: hand one over, so the guard stays. It is spelled out rather than inlined
+#: because it spent a while a digit short -- 0xFFFFFFF -- which silently also
+#: rejected any honest reading above about eight years, and the disagreement
+#: with the source's own sentinel was invisible at a glance.
+UNKNOWN_SECONDS = 0xFFFFFFFF
+
+
 def format_eta(seconds: float) -> str:
     seconds = int(seconds)
-    if seconds <= 0 or seconds >= 0xFFFFFFF:
+    if seconds <= 0 or seconds >= UNKNOWN_SECONDS:
         return "--"
     h, rem = divmod(seconds, 3600)
     m = rem // 60

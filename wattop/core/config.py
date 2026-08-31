@@ -29,6 +29,8 @@ log = logging.getLogger(__name__)
 class Config:
     interval: float = 1.0
     history: int = 240
+    #: Seconds of battery power averaged into the time-left estimate.
+    eta_window: float = 300.0
     path: Path | None = None
     sensors: list[Source] = field(default_factory=list)
     derived: list[DerivedChannel] = field(default_factory=list)
@@ -67,6 +69,7 @@ def load(explicit: str | os.PathLike[str] | None = None) -> Config:
     general = raw.get("general", {})
     cfg.interval = float(general.get("interval", cfg.interval))
     cfg.history = int(general.get("history", cfg.history))
+    cfg.eta_window = float(general.get("eta_window", cfg.eta_window))
     cfg.overrides = raw.get("overrides", {}) or {}
     cfg.graph_weights = {
         role: float(fraction) for role, fraction in (raw.get("graphs", {}) or {}).items()

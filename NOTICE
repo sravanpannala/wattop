@@ -1,0 +1,9 @@
+wattop
+Copyright 2026 Sravan Pannala
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file for the
+full terms.
+
+This product bundles no third-party source. At runtime it depends on Textual
+and Rich (Textualize, MIT licensed), which are installed separately and are
+not distributed as part of this work.

@@ -1,15 +1,53 @@
 [project]
 name = "wattop"
-version = "0.1.0"
 description = "btop-style terminal power monitor: power in/out, volts and amps, per-rail SoC power"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "textual>=0.80",
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Sravan Pannala", email = "sra.djoker@gmail.com" }]
+keywords = [
+    "power", "watts", "battery", "energy", "monitor", "tui", "terminal",
+    "sensors", "hwmon", "rapl", "snapdragon", "arm64",
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Hardware",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Power (UPS)",
+    "Typing :: Typed",
+]
+dependencies = [
+    # 2.1 is the oldest release the dashboard was actually exercised against
+    # (headless App.run_test, all six graphs, every keybinding). It is also what
+    # Debian 13 ships, so the floor is what the distro packages can satisfy.
+    "textual>=2.1",
+    # Imported directly by wattop/ui/app.py. Textual pulls it in too, but that
+    # is its business and not a promise, so declare what we import.
+    "rich>=13",
+]
+dynamic = ["version"]
 
 [project.optional-dependencies]
+# No Windows ARM64 wheel exists for pyarrow, so `wattop[parquet]` does not
+# install on the flagship platform. CSV logging is always available.
 parquet = ["pyarrow>=17"]
+
+[project.urls]
+Homepage = "https://github.com/sravanpannala/wattop"
+Repository = "https://github.com/sravanpannala/wattop"
+Issues = "https://github.com/sravanpannala/wattop/issues"
+Changelog = "https://github.com/sravanpannala/wattop/blob/main/CHANGELOG.md"
 
 [project.scripts]
 wattop = "wattop.cli:main"
@@ -18,5 +56,11 @@ wattop = "wattop.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+path = "wattop/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["wattop"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/wattop", "/README.md", "/LICENSE", "/NOTICE", "/config.example.toml", "/tests"]

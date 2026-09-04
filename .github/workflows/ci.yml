@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-11-arm is the platform the whole pitch rests on: the EMI
+        # rails and the battery IOCTL are Windows-on-ARM code paths, and the
+        # runner is free on public repos.
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+        python: ["3.12"]
+        include:
+          # Both ends of the supported range, on the cheapest runner.
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --group dev --python ${{ matrix.python }}
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest -q
+
+      # The platform switch in wattop/sources/__init__.py is import-time and
+      # conditional, which is exactly the thing that breaks silently. Prove the
+      # CLI actually starts on this OS rather than only that the tests import.
+      - name: Smoke
+        run: |
+          uv run wattop --version
+          uv run wattop --list || echo "no sensors on this runner, which is fine"
+
+  floor:
+    name: oldest supported textual
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # pyproject says textual>=2.1. Resolve to the floor rather than the
+      # newest, so the claim is tested instead of asserted.
+      - run: uv run --resolution lowest-direct --group dev pytest -q
+
+  build:
+    name: wheel and sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Check metadata
+        run: uvx twine check dist/*
+      # One py3-none-any wheel serves every OS and architecture, so a tag that
+      # does not say so is a packaging mistake worth failing on.
+      - name: Assert the wheel is pure and universal
+        run: ls dist/ | grep -q 'py3-none-any\.whl' || (ls dist/; exit 1)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

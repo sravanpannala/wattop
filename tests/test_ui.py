@@ -194,3 +194,33 @@ async def test_repeated_start_and_stop_is_clean(sampler):
             await pilot.pause()
             await pilot.press("s")
             await pilot.pause()
+
+
+class TestAxisLadder:
+    """The power rungs were measured on a 60 W laptop. They must not clip a
+    desktop."""
+
+    def graph(self):
+        from wattop.ui.app import Graph
+
+        return Graph("OUT", "power_out")
+
+    def test_idle_laptop_sits_on_the_short_rung(self):
+        assert self.graph()._rung(18.0) == 25.0
+
+    def test_a_burst_takes_the_tall_rung(self):
+        assert self.graph()._rung(40.0) == 60.0
+
+    def test_a_desktop_gets_a_real_axis_not_a_clipped_one(self):
+        g = self.graph()
+        assert g._rung(120.0) >= 120.0
+        assert g._rung(250.0) >= 250.0
+
+    def test_above_the_ladder_the_axis_is_still_a_round_number(self):
+        assert self.graph()._rung(120.0) == 200.0
+
+    def test_hysteresis_holds_the_taller_axis_just_below_a_rung(self):
+        g = self.graph()
+        g._rung(40.0)                       # up to 60
+        assert g._rung(24.0) == 60.0        # inside the dead band, hold
+        assert g._rung(10.0) == 25.0        # clear of it, drop back

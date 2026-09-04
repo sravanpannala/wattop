@@ -161,14 +161,21 @@ class Graph(Static):
         self.rung = POWER_STEPS[0]
 
     def _rung(self, peak: float) -> float:
-        """Smallest rung at or above `peak`, capped at the tallest one.
+        """Smallest rung at or above `peak`.
 
         Steps up the instant the window clears the current rung. Steps back down
         only once the peak has fallen clear of the band below the shorter rung --
         a series hovering right at a rung would otherwise flip the axis on
         alternate frames, which reads as a glitch rather than as a scale change.
+
+        Above the tallest tuned rung the ladder gives way to the 1-2-5 grid. The
+        rungs were measured on a 60 W laptop; a desktop CPU or a 140 W charger
+        would otherwise peg the axis at 60 W and clip everything above it, which
+        is the one thing a fixed axis must never do.
         """
-        target = next((s for s in POWER_STEPS if peak <= s), POWER_STEPS[-1])
+        target = next((s for s in POWER_STEPS if peak <= s), None)
+        if target is None:
+            target = nice_ceil(peak)
         if target < self.rung and peak > target * STEP_HYSTERESIS:
             return self.rung  # inside the dead band -- hold the taller axis
         self.rung = target

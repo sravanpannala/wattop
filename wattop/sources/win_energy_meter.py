@@ -27,12 +27,79 @@ from wattop.core.registry import register
 COUNTER_PATH = r"\Energy Meter(*)\Power"
 
 #: Rails whose meaning we know, so they can be headlined rather than dumped in
-#: with the rest. Anything not listed here lands in "rails" and still shows up.
+#: with the rest. Anything not listed here lands in "rails" and still shows up,
+#: so an unrecognised name costs a nice label and nothing else.
+#:
+#: `nominal_max` is deliberately absent for everything but the two rails
+#: measured on the reference laptop: the graph ladder picks a sensible axis on
+#: its own, and a guessed ceiling is worse than none on hardware we have not
+#: seen. Set one yourself with `[overrides."emi.<rail>"] nominal_max`.
 _KNOWN = {
+    # Qualcomm Snapdragon X. PSU_USB and SYS are measured on a Yoga Slim 7
+    # 14Q8X9; the rest are named in Qualcomm's own libqcperf, which reads this
+    # same counter path, and are labelled here on that basis.
     "PSU_USB": ("Charger in", "in", "power_in", 60.0),
     "SYS": ("System", "out", "power_out", 60.0),
+    "USBC_TOTAL": ("USB-C total", "rails", None, None),
+    "SOC": ("SoC", "rails", None, None),
+    "NPU": ("NPU", "rails", None, None),
+    "GPU": ("GPU", "rails", None, None),
+    "MEMORY": ("Memory", "rails", None, None),
+    "INFRA": ("Infrastructure", "rails", None, None),
+    "MULTIMEDIA": ("Multimedia", "rails", None, None),
+    "ROP": ("ROP", "rails", None, None),
 }
+
+#: x86 Windows 11 exposes RAPL through this same counterset, under names shaped
+#: `RAPL_Package<n>_<DOMAIN>` and `RAPL_Package<n>_Core<m>_CORE`. Matching the
+#: domain suffix rather than the whole string keeps this working on a two-socket
+#: box without listing every index.
+#:
+#: UNVERIFIED: named from documentation, not measured -- the development machine
+#: is ARM64 and has no RAPL. If the names are wrong the rails still appear under
+#: their raw names in the `rails` group, which is what happens today, so this is
+#: strictly an improvement or a no-op. Do not claim x86 support until someone
+#: has run it on one.
+_RAPL_DOMAINS = {
+    # The whole package: the closest x86 equivalent of Snapdragon's SYS, and the
+    # only one worth headlining.
+    "PKG": ("CPU package", "out", "power_out", None),
+    "PP0": ("CPU cores", "rails", None, None),
+    "PP1": ("Integrated GPU", "rails", None, None),
+    "DRAM": ("Memory", "rails", None, None),
+    "PSYS": ("Platform", "rails", None, None),
+    # Per-core rails (`RAPL_Package0_Core0_CORE`) are left alone deliberately:
+    # any label built from the domain would repeat the index already in the
+    # name, and the raw name reads perfectly well in the rails panel.
+}
+
 _SKIP = {"_total"}
+
+
+def _classify(instance: str) -> tuple[str, str, str | None, float | None]:
+    """Label, group, role and axis ceiling for one rail instance."""
+    known = _KNOWN.get(instance)
+    if known is not None:
+        return known
+
+    if instance.upper().startswith("RAPL_"):
+        parts = instance.split("_")
+        domain = _RAPL_DOMAINS.get(parts[-1].upper())
+        if domain is not None:
+            label, group, role, nominal = domain
+            # Keep the package and core index in the label, so a two-socket
+            # machine does not show four rails all called "CPU cores".
+            qualifier = " ".join(p for p in parts[1:-1] if p)
+            return (f"{label} {qualifier}".strip() if qualifier else label,
+                    group, role, nominal)
+
+    # Measured on the reference laptop: CPU_CLUSTER_0/1/2 are the three
+    # Snapdragon core clusters. Matched by prefix so a chip with more of them
+    # needs no change here.
+    if instance.upper().startswith("CPU_CLUSTER_"):
+        return (f"CPU cluster {instance.rsplit('_', 1)[-1]}", "rails", None, None)
+
+    return (instance, "rails", None, None)
 
 
 @register
@@ -73,8 +140,15 @@ class EnergyMeterSource:
 
     def channels(self) -> list[Channel]:
         out = []
+        taken: set[str] = set()
         for inst in self._instances:
-            label, group, role, nominal = _KNOWN.get(inst, (inst, "rails", None, None))
+            label, group, role, nominal = _classify(inst)
+            # A two-socket machine has a PKG rail per socket. Only the first can
+            # headline; the rest stay rails, which is where they belong anyway.
+            if role is not None and role in taken:
+                label, group, role, nominal = (label, "rails", None, None)
+            elif role is not None:
+                taken.add(role)
             out.append(
                 Channel(
                     key=f"emi.{inst}",

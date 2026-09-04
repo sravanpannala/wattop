@@ -16,6 +16,11 @@ from wattop.core.sampler import Sampler
 
 log = logging.getLogger("wattop")
 
+#: Gap between the two samples `--list` takes. Long enough that a rate counter
+#: has an interval to divide by, short enough that the listing still feels
+#: instant.
+LIST_SETTLE = 0.15
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -126,7 +131,12 @@ def main(argv: list[str] | None = None) -> int:
 def cmd_list(sampler: Sampler, as_json: bool = False) -> int:
     from wattop.render import render_list
 
-    # One sample so the listing can show live values next to the channels.
+    # Two samples so the listing can show live values next to the channels.
+    # One is not enough: anything derived from a rate -- /proc/stat, a PDH
+    # counter -- has no interval to divide by yet and reads a flat zero, which
+    # looks like a broken sensor rather than a missing beat.
+    sampler.sample()
+    time.sleep(LIST_SETTLE)
     sampler.sample()
     if as_json:
         print(

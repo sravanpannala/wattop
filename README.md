@@ -4,11 +4,27 @@ A btop-style terminal power monitor: **power in, power out, volts and amps**, ne
 and memory load that explains them, plus whatever per-rail SoC power the machine is willing to tell
 you about.
 
-It exists because btop can't do this. `btop4win` reads the battery through `GetSystemPowerStatus()`,
-which gives percent and time remaining and nothing else — the watts code path that mainline Linux
-btop has does not exist in the Windows port. `bottom` shows battery watts but no volts, no amps, and
-no per-rail power. Neither has a plugin system, so there is no way to add a sensor short of
-recompiling.
+**No administrator rights, no kernel driver, no signed helper — on any platform.** That is the part
+worth leading with. Every Windows tool that reports CPU power today goes through a ring-0 driver, and
+the one they nearly all use now carries a published vulnerability and is a Defender signature. wattop
+reads a performance counter and a device IOCTL, both as a normal user, at about 0.1 ms a sample.
+
+It exists because of a gap on Windows specifically. Mainline btop on **Linux** does show battery and
+CPU watts, and does it well; `btop4win` does not, because the watts code path was never ported —
+it reads `GetSystemPowerStatus()`, which gives percent and time remaining and nothing else. `bottom`
+shows battery watts on all three platforms but no volts, no amps, and no per-rail power. Neither has
+a plugin system, so there is no way to add a sensor short of recompiling.
+
+Windows on ARM is the sharpest case: Snapdragon laptops expose measured board-level power rails that
+nothing else reads, and the tools people reach for either do not build for ARM64 or report no power
+at all there.
+
+**Prior art worth knowing about**, because wattop is not first and does not claim to be. On macOS,
+[jolt](https://github.com/jordond/jolt), [macmon](https://github.com/vladkens/macmon) and
+[mactop](https://github.com/context-labs/mactop) are all good, native, and better than wattop will be
+there. On Linux, [s-tui](https://github.com/amanusk/s-tui) has graphed CPU watts for years. What none
+of them do is Windows, and none of them graph a *measured* charger-input rail. See
+[Where wattop fits](#where-wattop-fits).
 
 ```
 ╭─ OUT  System ────────────────────────────────────────────────────────╮
@@ -146,20 +162,61 @@ Be aware of what a Ryzen AI Max+ 395 desktop **cannot** give you: no voltage or 
 rail, and the Framework EC exposes no PSU wattage). For real wall power there, point the
 `http_json` source at a smart plug — see below.
 
+## Where wattop fits
+
+|  | Windows | Linux | macOS |
+|---|---|---|---|
+| [btop](https://github.com/aristocratos/btop) | no build | battery + CPU watts | no watts |
+| [btop4win](https://github.com/aristocratos/btop4win) | percent only, no watts | — | — |
+| [bottom](https://github.com/ClementTsang/bottom) | battery watts, one static row | same | same |
+| [jolt](https://github.com/jordond/jolt) | not supported | yes | best in class |
+| [macmon](https://github.com/vladkens/macmon) / [mactop](https://github.com/context-labs/mactop) | — | — | yes |
+| [s-tui](https://github.com/amanusk/s-tui) | — | CPU watts, graphed | — |
+| **wattop** | **measured rails + battery, no admin, including ARM64** | hwmon / powercap / sysfs | **not supported** |
+
+So the honest claim is not "the first power monitor in a terminal". It is four narrower things:
+
+1. **Measured, not estimated.** The common fallback elsewhere is CPU percent multiplied by the
+   chip's rated power. wattop reads a hardware shunt, or shows nothing.
+2. **Power *in*, not just power out.** The charger rail is a measured reading, so
+   `[[derived]] expr = "emi.PSU_USB - emi.SYS - batt.power"` gives you charger loss.
+3. **Volts and amps**, which nothing else currently graphs in a terminal.
+4. **No admin, no driver, anywhere.**
+
+**macOS is not supported.** wattop runs there and exits cleanly saying it found no sensors. Adding it
+would mean a fifth entrant into the one platform that is already well served; the tools above are
+native code and sudoless and get it right. Use one of those.
+
 ## Install
 
-Needs Python 3.11+. On Windows ARM64, pin the native interpreter explicitly — `uv` itself is an
-x86_64 build and will otherwise hand you an emulated Python:
+```console
+$ uvx wattop                 # run it without installing anything
+$ uv tool install wattop     # or keep it on PATH
+```
+
+[uv](https://docs.astral.sh/uv/) installs its own Python, so this works on a machine with none. If
+you would rather use what you have, `pipx install wattop` and `pip install wattop` both work; wattop
+needs Python 3.11 or newer.
+
+There is one wheel and it is `py3-none-any` — the same file serves Windows x64 and ARM64, Linux
+x86-64 and aarch64, with no compiled extension anywhere.
+
+Optional: `wattop[parquet]` logs to Parquet instead of CSV. It has no Windows ARM64 wheel, so on a
+Snapdragon machine stick to CSV.
+
+### From source
+
+```console
+$ git clone https://github.com/sravanpannala/wattop && cd wattop
+$ uv sync && uv run wattop
+```
+
+On Windows ARM64, pin the native interpreter explicitly — `uv` itself is an x86_64 build and will
+otherwise hand you an emulated Python:
 
 ```console
 $ uv venv --python cpython-3.12-windows-aarch64
 $ uv sync
-```
-
-Everywhere else `uv sync` is enough. Then:
-
-```console
-$ uv run wattop
 ```
 
 ## Usage
@@ -168,7 +225,7 @@ $ uv run wattop
 $ wattop                     # the live dashboard
 $ wattop --list              # every channel discovered, with its group and role
 $ wattop --once              # one snapshot, then exit
-$ wattop --once --json       # ... as JSON, for a prompt segment or an OSD
+$ wattop --once --json       # ... as JSON, for a script or an OSD
 $ wattop --json -n 60        # a stream of JSON lines
 $ wattop --log power.csv     # append samples to CSV (or .parquet with the extra)
 $ wattop --details           # start with the per-rail sensor panels open
@@ -177,6 +234,11 @@ $ wattop -i 0.25             # faster sampling
 
 In the TUI: `q` quit, `p` pause, `s` show or hide the per-rail and per-zone sensor panels,
 `+`/`-` change the interval.
+
+`--once` takes about two seconds on Windows, nearly all of it waiting for the performance counters to
+advance — a rate counter yields nothing until a second sample exists, and that is the data source's
+floor, not Python's. Fine for a script or a log; too slow for a shell prompt that runs it every
+command.
 
 `--log` writes its header from the channels discovered at startup and skips it when the file
 already has one, so start a new file rather than appending to a log written before a machine
@@ -242,3 +304,7 @@ wattop/sources/   win_energy_meter, win_battery, win_thermal, win_system,
 wattop/ui/        the Textual dashboard
 wattop/render.py  sparklines, bars, the text tables used by --list and --once
 ```
+
+## Licence
+
+Apache-2.0. See [LICENSE](LICENSE).

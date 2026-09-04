@@ -7,6 +7,12 @@ All notable changes to wattop are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `python -m wattop`, which works when the installed console script is not on
+  PATH. `pip install --user` on Windows is the case people actually hit.
+
+## [0.1.0] - 2026-09-04
+
+### Added
 - CPU and memory graphs, sourced from the Processor Information counterset and
   `GlobalMemoryStatusEx` on Windows and from `/proc/stat` and `/proc/meminfo` on
   Linux. Both emit the same channel keys, so the dashboard is the same screen on

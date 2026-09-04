@@ -34,18 +34,31 @@ jobs:
       # with a system Python, and the artifact the Scoop manifest installs. Not
       # a frozen binary -- nothing is compiled and there is no bootloader for a
       # virus scanner to take exception to.
+      #
+      # Built OUTSIDE dist/ deliberately. The PyPI upload takes everything in
+      # its packages directory and rejects anything that is not a wheel or an
+      # sdist, so a zipapp sitting in dist/ fails the entire publish.
       - name: Build the zipapp
-        run: uvx shiv -c wattop -o dist/wattop.pyz dist/*.whl
+        run: |
+          mkdir -p assets
+          uvx shiv -c wattop -o assets/wattop.pyz dist/*.whl
 
       - name: Smoke-test the zipapp
         run: |
-          python dist/wattop.pyz --version
-          python dist/wattop.pyz --list || echo "no sensors on this runner, which is fine"
+          python assets/wattop.pyz --version
+          python assets/wattop.pyz --list || echo "no sensors on this runner, which is fine"
 
+      # Two artifacts, because the consumers want different things: PyPI takes
+      # only what it accepts, the GitHub release takes everything.
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assets
+          path: assets/
 
   publish:
     needs: build
@@ -67,12 +80,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # The sdist is attached too, because the AUR, COPR and Build Service
+      # recipes all build from a release tarball rather than from PyPI.
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      # The sdist is attached because the AUR, COPR and Build Service recipes
-      # all build from a release tarball rather than from PyPI.
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: assets
+          path: dist/
+
       # Stamp the Scoop manifest with the version and the real hash, so the
       # bucket can be updated by copying one file rather than editing it.
       - name: Stamp the Scoop manifest

@@ -8,7 +8,9 @@ of any sensor. That is what lets the same screen describe a Snapdragon laptop
 
 from __future__ import annotations
 
+import logging
 import platform
+from typing import ClassVar
 
 from rich.panel import Panel
 from rich.table import Table
@@ -31,6 +33,8 @@ from wattop.render import (
     sparkline,
     value_style,
 )
+
+log = logging.getLogger("wattop")
 
 HEADLINE_ROLES = (
     ("IN", "power_in"),
@@ -418,7 +422,7 @@ class WattopApp(App):
     #status   { color: $text-muted; padding: 0 2; }
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("q", "quit", "Quit"),
         ("p", "toggle_pause", "Pause"),
         ("s", "toggle_details", "Sensors"),
@@ -501,6 +505,12 @@ class WattopApp(App):
         self.refresh_panels()
 
     def on_unmount(self) -> None:
+        # Stop polling before the widgets go away. Otherwise a tick landing
+        # mid-teardown looks for #battery, does not find it, and the exception
+        # comes out of the timer as a traceback on quit.
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
         # An empty title makes the terminal fall back to naming the tab after
         # the foreground process, i.e. the shell we are returning to.
         self._set_terminal_title("")
@@ -510,8 +520,12 @@ class WattopApp(App):
         so tabs otherwise show the process name: python.exe."""
         try:
             self._driver.write(f"\x1b]0;{title}\x07")
-        except Exception:
-            pass  # no driver in headless tests, or already torn down on exit
+        except Exception as exc:  # noqa: BLE001 - cosmetic, never worth failing over
+            # `_driver` is private API and this write is best-effort: there is
+            # no driver at all under run_test, and on exit it may already be
+            # torn down. Log rather than pass, so a Textual release that moves
+            # this leaves a trace under --debug instead of dropping it silently.
+            log.debug("could not set terminal title: %s", exc)
 
     def tick(self) -> None:
         if self.paused:
@@ -606,6 +620,11 @@ class WattopApp(App):
         return heights
 
     def refresh_panels(self) -> None:
+        # Redrawing an app that is on its way out is not an error, it is a
+        # no-op. A repaint queued before the last teardown step would otherwise
+        # query widgets that have already gone.
+        if not self.is_running:
+            return
         width = self.size.width or 100
         heights = self._graph_heights()
         for graph in self._graphs:

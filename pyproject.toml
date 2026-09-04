@@ -64,3 +64,33 @@ packages = ["wattop"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/wattop", "/README.md", "/LICENSE", "/NOTICE", "/config.example.toml", "/tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error", "default::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RET", "BLE", "A", "RUF"]
+ignore = [
+    # The sources deliberately swallow broad exceptions so one dead sensor
+    # never costs the rest of the dashboard; each site carries a justification.
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests reach into app internals on purpose: the point is to assert on layout
+# state that has no public accessor.
+"tests/*" = ["SLF001"]

@@ -44,7 +44,7 @@ class Sampler:
             try:
                 for ch in src.channels():
                     self._add(ch)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.debug("channel discovery failed for %s", src.name, exc_info=True)
                 self.failed[src.name] = str(exc)
         for d in self.derived:
@@ -95,7 +95,7 @@ class Sampler:
             try:
                 values.update(src.read())
                 self.failed.pop(src.name, None)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.debug("read failed for %s", src.name, exc_info=True)
                 self.failed[src.name] = str(exc)
 

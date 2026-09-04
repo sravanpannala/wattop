@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from wattop.core.channel import Channel, Source
+from wattop.core.channel import GROUPS, ROLES, Channel, Source
 from wattop.core.derived import ExprError, compile_expr
 from wattop.core.sampler import DerivedChannel
 
@@ -118,5 +118,29 @@ def apply_override(channel: Channel, override: dict[str, Any]) -> Channel:
     from dataclasses import replace
 
     allowed = {"label", "unit", "group", "role", "precision", "nominal_max"}
+    unknown = set(override) - allowed
+    if unknown:
+        log.warning(
+            "[overrides.%r]: ignoring unknown field(s) %s",
+            channel.key,
+            ", ".join(sorted(unknown)),
+        )
     fields = {k: v for k, v in override.items() if k in allowed}
+
+    # A misspelled group or role is otherwise silent: the channel is still
+    # sampled and still logged, it just never appears anywhere on screen, which
+    # reads as a broken sensor rather than a typo two lines up.
+    if "group" in fields and fields["group"] not in GROUPS:
+        log.warning(
+            "[overrides.%r]: %r is not a group (%s); leaving it in %r",
+            channel.key, fields["group"], ", ".join(GROUPS), channel.group,
+        )
+        del fields["group"]
+    if "role" in fields and fields["role"] is not None and fields["role"] not in ROLES:
+        log.warning(
+            "[overrides.%r]: %r is not a role (%s); leaving it unassigned",
+            channel.key, fields["role"], ", ".join(ROLES),
+        )
+        del fields["role"]
+
     return replace(channel, **fields) if fields else channel

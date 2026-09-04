@@ -43,11 +43,6 @@ def sparkline(
     return "".join(out)
 
 
-#: Partial cells growing upward from the floor of the cell, and the two glyphs
-#: Unicode gives us for growing downward from the ceiling.
-UP_EIGHTHS = " ▁▂▃▄▅▆▇█"
-DOWN_HALF, DOWN_EIGHTH = "▀", "▔"
-
 #: Bottom-of-graph to top-of-graph colour ramps, btop style.
 GRADIENTS = {
     "power_in": ["#1b5e20", "#2e7d32", "#388e3c", "#43a047", "#4caf50", "#66bb6a", "#81c784"],
@@ -82,7 +77,7 @@ def nice_ceil(value: float) -> float:
     return 10.0 ** (exp + 1)  # unreachable; the loop always hits
 
 
-def graph_bounds(data, anchor_zero: bool = False) -> tuple[float, float]:
+def graph_bounds(data) -> tuple[float, float]:
     """Pick the vertical span for a tall graph.
 
     Deliberately *not* zero-anchored, unlike the one-line sparklines. A charger
@@ -121,64 +116,6 @@ def graph_bounds(data, anchor_zero: bool = False) -> tuple[float, float]:
     return max(0.0, lo - span * 0.15), hi + span * 0.10
 
 
-def block_graph(
-    values,
-    width: int,
-    height: int,
-    lo: float | None = None,
-    hi: float | None = None,
-    anchor_zero: bool = False,
-) -> list[str]:
-    """A btop-style area graph, `height` rows tall.
-
-    Returns `height` strings, top row first -- one string per row rather than a
-    glyph-per-cell list, because the colour ramp is keyed on the row: every cell
-    in a row gets the same colour, so the caller can paint a whole row with a
-    single style. The per-cell form cost ~1800 styled spans per graph per frame,
-    which Rich does not coalesce, and it dominated the frame time.
-
-    Bars grow from the zero line when the series crosses zero and from the floor
-    otherwise. Downward bars are coarser than upward ones -- Unicode has eight
-    upward partial blocks but only two downward -- which is fine, since the
-    interesting precision on a discharging battery is the depth, not the eighth.
-    """
-    data = list(values)[-width:]
-    if not data or height < 1:
-        return ["" for _ in range(height)]
-
-    if lo is None or hi is None:
-        auto_lo, auto_hi = graph_bounds(data, anchor_zero)
-        lo = auto_lo if lo is None else lo
-        hi = auto_hi if hi is None else hi
-    if hi <= lo:
-        hi = lo + 1e-9
-
-    span = hi - lo
-    # Where the zero line sits, in eighth-cells above the graph floor.
-    zero_e = max(0.0, min(height * 8.0, (0.0 - lo) / span * height * 8)) if lo < 0 else 0.0
-
-    cells: list[list[str]] = [[] for _ in range(height)]
-    for value in data:
-        v_e = (value - lo) / span * height * 8
-        top_e, bottom_e = (max(v_e, zero_e), min(v_e, zero_e))
-        for row in range(height):  # row 0 is the floor
-            cell_lo, cell_hi = row * 8.0, row * 8.0 + 8.0
-            out = cells[height - 1 - row]
-            if bottom_e >= cell_hi or top_e <= cell_lo:
-                out.append(" ")
-                continue
-            filled = min(top_e, cell_hi) - max(bottom_e, cell_lo)
-            if filled >= 7.5:
-                out.append("█")
-            elif max(bottom_e, cell_lo) <= cell_lo + 1e-9:
-                # anchored to the floor of the cell: grows upward
-                out.append(UP_EIGHTHS[max(1, round(filled))])
-            else:
-                # hanging from the ceiling of the cell: only two glyphs exist
-                out.append(DOWN_HALF if filled >= 3 else DOWN_EIGHTH)
-    return ["".join(row) for row in cells]
-
-
 #: Braille dot masks for a column filled bottom-up with 0..4 dots. A braille
 #: cell is 2 dots wide by 4 tall; the left column is dots 1/2/3/7, the right
 #: 4/5/6/8, numbered top-down but filled here from the floor.
@@ -195,10 +132,14 @@ def braille_graph(
 ) -> list[str]:
     """A btop-style braille area graph, `height` rows tall.
 
-    Same contract as `block_graph` -- `height` strings, top row first, one
-    string per row so the caller can paint each row with a single style -- but
-    drawn in braille cells: two samples per column and quarter-cell vertical
-    steps, so the same panel shows twice the history at finer grain.
+    Returns `height` strings, top row first -- one string per row rather than a
+    glyph-per-cell list, because the colour ramp is keyed on the row: every cell
+    in a row gets the same colour, so the caller can paint a whole row with a
+    single style. The per-cell form cost ~1800 styled spans per graph per frame,
+    which Rich does not coalesce, and it dominated the frame time.
+
+    Braille cells are 2 dots wide by 4 tall, so a column carries two samples at
+    quarter-cell vertical steps: twice the history at finer grain than blocks.
 
     Bars grow from `lo` at the floor; values are clamped to [lo, hi]. Every
     sample leaves at least one dot, so a quiet rail reads as a floor line

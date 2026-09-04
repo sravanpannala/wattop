@@ -8,7 +8,7 @@ on a Snapdragon laptop and an AMD desktop with no platform branching in the UI.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from wattop.core.channel import Source
 
@@ -42,14 +42,14 @@ def build_sources(extra: Iterable[Source] = ()) -> list[Source]:
                 live.append(src)
             else:
                 log.debug("source %s not available", getattr(src, "name", factory))
-        except Exception:  # noqa: BLE001 - a bad source must not be fatal
+        except Exception:
             log.debug("source %s failed to initialise", factory, exc_info=True)
 
     for src in extra:
         try:
             if src.available():
                 live.append(src)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.debug("configured source %s failed", getattr(src, "name", src), exc_info=True)
 
     return live

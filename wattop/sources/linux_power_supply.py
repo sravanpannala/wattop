@@ -84,7 +84,9 @@ class PowerSupplySource:
                     2,
                     nominal_max=self._full,
                 ),
-                Channel("batt.level", "Level", "%", "battery", "battery_level", 1, nominal_max=100.0),
+                Channel(
+                    "batt.level", "Level", "%", "battery", "battery_level", 1, nominal_max=100.0
+                ),
             ]
             if self._full:
                 out.append(

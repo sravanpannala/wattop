@@ -108,10 +108,7 @@ def _pointer(doc: Any, pointer: str) -> float | None:
     for part in pointer.strip("/").split("/"):
         if part == "":
             continue
-        if isinstance(node, list):
-            node = node[int(part)]
-        else:
-            node = node[part]
+        node = node[int(part)] if isinstance(node, list) else node[part]
     return float(node) if node is not None else None
 
 

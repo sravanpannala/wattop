@@ -16,8 +16,6 @@ import time
 from ctypes import wintypes as W
 
 PDH_FMT_DOUBLE = 0x00000200
-PDH_FMT_NOCAP100 = 0x00008000
-PDH_MORE_DATA = 0x800007D2 - 0x100000000  # returned as a negative c_long
 PDH_CSTATUS_VALID_DATA = 0
 PDH_CSTATUS_NEW_DATA = 1
 

@@ -24,7 +24,9 @@ from wattop.core.channel import Channel
 from wattop.core.registry import register
 
 # Device interface class for batteries.
-_GUID_DEVICE_BATTERY = (0x72631E54, 0x78A4, 0x11D0, (0xBC, 0xF7, 0x00, 0xAA, 0x00, 0xB7, 0xB3, 0x2A))
+_GUID_DEVICE_BATTERY = (
+    0x72631E54, 0x78A4, 0x11D0, (0xBC, 0xF7, 0x00, 0xAA, 0x00, 0xB7, 0xB3, 0x2A)
+)
 
 _DIGCF_PRESENT = 0x02
 _DIGCF_DEVICEINTERFACE = 0x10
@@ -289,7 +291,9 @@ class BatterySource:
             Channel(f"{p}.power", "Battery", "W", "battery", "battery_power", 2, signed=True),
             Channel(f"{p}.voltage", "Voltage", "V", "battery", "battery_voltage", 3),
             Channel(f"{p}.current", "Current", "A", "battery", "battery_current", 3, signed=True),
-            Channel(f"{p}.charge", "Charge", "Wh", "battery", "battery_charge", 2, nominal_max=full),
+            Channel(
+                f"{p}.charge", "Charge", "Wh", "battery", "battery_charge", 2, nominal_max=full
+            ),
             Channel(f"{p}.level", "Level", "%", "battery", "battery_level", 1, nominal_max=100.0),
             Channel(f"{p}.temp", "Batt temp", "degC", "thermal", None, 1),
             Channel(f"{p}.ac", "AC online", "", "battery", "ac_online", 0),

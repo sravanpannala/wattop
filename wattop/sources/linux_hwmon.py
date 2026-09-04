@@ -155,7 +155,3 @@ def _read_text(path: Path) -> str | None:
         return path.read_text(errors="replace").strip()
     except OSError:
         return None
-
-
-def _readable(path: Path) -> bool:
-    return _read_text(path) is not None

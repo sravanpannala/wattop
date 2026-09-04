@@ -6,6 +6,8 @@ All notable changes to wattop are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-04
+
 ### Added
 - `python -m wattop`, which works when the installed console script is not on
   PATH. `pip install --user` on Windows is the case people actually hit.

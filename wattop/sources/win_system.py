@@ -43,8 +43,6 @@ LEGACY_TIME_PATH = r"\Processor(_Total)\% Processor Time"
 
 GB = 1024.0**3
 
-_kernel32 = C.WinDLL("kernel32", use_last_error=True)
-
 
 @register
 class CpuSource:
@@ -127,8 +125,19 @@ class _MemoryStatusEx(C.Structure):
     ]
 
 
-_kernel32.GlobalMemoryStatusEx.argtypes = [C.POINTER(_MemoryStatusEx)]
-_kernel32.GlobalMemoryStatusEx.restype = W.BOOL
+def _kernel32():
+    """Resolved on first use, not at import.
+
+    Every other Windows source reaches for its DLL from inside `available()`,
+    so the module itself imports cleanly anywhere. This one did not, and any
+    tool that walks the package and imports each module -- rpm's
+    %pyproject_check_import is the one that caught it -- died on Linux with
+    `module 'ctypes' has no attribute 'WinDLL'`.
+    """
+    dll = C.WinDLL("kernel32", use_last_error=True)
+    dll.GlobalMemoryStatusEx.argtypes = [C.POINTER(_MemoryStatusEx)]
+    dll.GlobalMemoryStatusEx.restype = W.BOOL
+    return dll
 
 
 @register
@@ -137,11 +146,14 @@ class MemorySource:
 
     def __init__(self) -> None:
         self._total = 0.0
+        self._dll = None
 
     def _status(self) -> _MemoryStatusEx | None:
+        if self._dll is None:
+            self._dll = _kernel32()
         status = _MemoryStatusEx()
         status.dwLength = C.sizeof(_MemoryStatusEx)
-        if not _kernel32.GlobalMemoryStatusEx(C.byref(status)):
+        if not self._dll.GlobalMemoryStatusEx(C.byref(status)):
             return None
         return status
 

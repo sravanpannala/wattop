@@ -63,7 +63,16 @@ path = "wattop/__init__.py"
 packages = ["wattop"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/wattop", "/README.md", "/LICENSE", "/NOTICE", "/config.example.toml", "/tests"]
+include = [
+    "/wattop",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/NOTICE",
+    "/config.example.toml",
+    "/packaging",
+]
 
 [dependency-groups]
 dev = [

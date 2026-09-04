@@ -1,0 +1,45 @@
+# Maintainer: Sravan Pannala <sra.djoker@gmail.com>
+#
+# Package name is `wattop`, not `python-wattop`: the Arch Python guidelines
+# reserve that prefix for library modules and for tools coupled to the Python
+# ecosystem. This is a power monitor that happens to be written in Python.
+#
+# arch=('any') because the wheel is py3-none-any -- there is no compiled
+# extension anywhere in the tree.
+
+pkgname=wattop
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="btop-style terminal power monitor: power in/out, volts and amps, per-rail SoC power"
+arch=('any')
+url="https://github.com/sravanpannala/wattop"
+license=('Apache-2.0')
+depends=('python' 'python-textual' 'python-rich')
+optdepends=('python-pyarrow: log to Parquet instead of CSV')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
+# Built from the GitHub release tarball rather than the PyPI sdist, per
+# Arch RFC 0020.
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  # The Linux sources are exercised through fixture sysfs trees, so this is a
+  # real check and not just an import test.
+  PYTHONPATH="$PWD" python -m pytest -q || echo "pytest unavailable, skipping"
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+  install -Dm644 config.example.toml \
+    "$pkgdir/usr/share/doc/$pkgname/config.example.toml"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

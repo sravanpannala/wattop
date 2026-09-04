@@ -29,6 +29,19 @@ jobs:
 
       - run: uv build
       - run: uvx twine check dist/*
+
+      # A zipapp of pure Python: one file that runs on every OS and processor
+      # with a system Python, and the artifact the Scoop manifest installs. Not
+      # a frozen binary -- nothing is compiled and there is no bootloader for a
+      # virus scanner to take exception to.
+      - name: Build the zipapp
+        run: uvx shiv -c wattop -o dist/wattop.pyz dist/*.whl
+
+      - name: Smoke-test the zipapp
+        run: |
+          python dist/wattop.pyz --version
+          python dist/wattop.pyz --list || echo "no sensors on this runner, which is fine"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -60,6 +73,13 @@ jobs:
           path: dist/
       # The sdist is attached because the AUR, COPR and Build Service recipes
       # all build from a release tarball rather than from PyPI.
+      # Stamp the Scoop manifest with the version and the real hash, so the
+      # bucket can be updated by copying one file rather than editing it.
+      - name: Stamp the Scoop manifest
+        run: |
+          python packaging/scoop/stamp.py "${GITHUB_REF_NAME}" dist/wattop.pyz
+          cp packaging/scoop/wattop.json dist/
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

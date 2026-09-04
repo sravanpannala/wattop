@@ -1,0 +1,21 @@
+{
+    "version": "0.1.0",
+    "description": "btop-style terminal power monitor: power in/out, volts and amps, per-rail SoC power",
+    "homepage": "https://github.com/sravanpannala/wattop",
+    "license": "Apache-2.0",
+    "depends": "python",
+    "url": "https://github.com/sravanpannala/wattop/releases/download/v0.1.0/wattop.pyz",
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "installer": {
+        "script": [
+            "@('@echo off', 'python \"%~dp0wattop.pyz\" %*') | Set-Content -Path \"$dir\\wattop.cmd\" -Encoding ASCII"
+        ]
+    },
+    "bin": "wattop.cmd",
+    "checkver": {
+        "github": "https://github.com/sravanpannala/wattop"
+    },
+    "autoupdate": {
+        "url": "https://github.com/sravanpannala/wattop/releases/download/v$version/wattop.pyz"
+    }
+}

@@ -34,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ROWS",
         help="rows per headline graph (default: fill the window)",
     )
+    p.add_argument(
+        "--details",
+        action="store_true",
+        help="start with the per-rail and per-zone sensor panels open (`s` toggles)",
+    )
 
     mode = p.add_argument_group("modes (default is the live TUI)")
     mode.add_argument(
@@ -105,7 +110,13 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_log(sampler, interval, args.log, args.count)
         if args.json:
             return cmd_stream(sampler, interval, args.count)
-        return cmd_tui(sampler, interval, args.graph_height, cfg.graph_weights or None)
+        return cmd_tui(
+            sampler,
+            interval,
+            args.graph_height,
+            cfg.graph_weights or None,
+            show_details=args.details or cfg.show_details,
+        )
     except KeyboardInterrupt:
         return 130
     finally:
@@ -186,6 +197,7 @@ def cmd_tui(
     interval: float,
     graph_height: int | None = None,
     graph_weights: dict[str, float] | None = None,
+    show_details: bool = False,
 ) -> int:
     from wattop.ui.app import WattopApp
 
@@ -194,6 +206,7 @@ def cmd_tui(
         interval=interval,
         graph_height=graph_height,
         graph_weights=graph_weights,
+        show_details=show_details,
     ).run()
     return 0
 

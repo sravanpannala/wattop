@@ -16,6 +16,14 @@ history  = 240    # samples kept for the graphs
 # is why it swings by an hour between one second and the next.
 eta_window = 300.0
 
+# Start with the per-rail and per-zone sensor panels open, below the graphs.
+# They are closed by default because on most machines they are a screenful of
+# numbers that rarely move, and the rows they hold are rows the graphs wanted;
+# the hottest zone is already on screen as TEMP. Turn this on if per-rail power
+# is the reason you are running wattop. `s` toggles it at runtime either way,
+# and `--details` turns it on for one run.
+show_details = false
+
 # Fraction of the window height each headline graph gets. Roles left out share
 # whatever is left over. Defaults shown: three rows of two in a landscape
 # window, heaviest pair first.

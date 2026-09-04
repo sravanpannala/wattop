@@ -38,6 +38,10 @@ class Config:
     #: role -> fraction of the window height for that headline graph.
     #: Empty means "use the built-in defaults".
     graph_weights: dict[str, float] = field(default_factory=dict)
+    #: Start with the per-rail and per-zone sensor panels open. They are off by
+    #: default because on most machines they are a screenful of numbers that
+    #: rarely move, and they cost the graphs rows; `s` toggles them at runtime.
+    show_details: bool = False
 
 
 def default_paths() -> list[Path]:
@@ -70,6 +74,7 @@ def load(explicit: str | os.PathLike[str] | None = None) -> Config:
     cfg.interval = float(general.get("interval", cfg.interval))
     cfg.history = int(general.get("history", cfg.history))
     cfg.eta_window = float(general.get("eta_window", cfg.eta_window))
+    cfg.show_details = bool(general.get("show_details", cfg.show_details))
     cfg.overrides = raw.get("overrides", {}) or {}
     cfg.graph_weights = {
         role: float(fraction) for role, fraction in (raw.get("graphs", {}) or {}).items()

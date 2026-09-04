@@ -63,12 +63,14 @@ CONSUMED_ROLES = frozenset(
 #: axis ceiling, printed on it -- a panel row repeating it says nothing new.
 CONSUMED_KEYS = frozenset({"batt.eta", ETA_KEY, "batt.full", "mem.total"})
 
-#: Groups that are sampled but not drawn. Every rail and every thermal zone is
-#: still read, still listed by `--list`, and still logged by `--log`; they simply
-#: no longer get a text panel under the graphs, which is where the rows the
-#: graphs wanted were going. The hottest zone survives on screen as TEMP, which
-#: is the one thing those panels were read for at a glance.
-HIDDEN_GROUPS = frozenset({"rails", "thermal"})
+#: Groups whose panels start closed. Every rail and every thermal zone is still
+#: read, still listed by `--list`, and still logged by `--log`; they simply do
+#: not hold rows under the graphs until asked for, because on most machines they
+#: are a screenful of numbers that rarely move and the hottest zone already
+#: survives on screen as TEMP. `s` opens them, and `show_details` in the config
+#: starts them open -- which is what you want on a machine whose per-rail power
+#: is the reason you are running this at all.
+DETAIL_GROUPS = frozenset({"rails", "thermal"})
 
 
 #: Fraction of the window each headline graph gets, as *height*. In a landscape
@@ -419,6 +421,7 @@ class WattopApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("p", "toggle_pause", "Pause"),
+        ("s", "toggle_details", "Sensors"),
         ("+", "faster", "Faster"),
         ("-", "slower", "Slower"),
     ]
@@ -431,6 +434,7 @@ class WattopApp(App):
         interval: float = 1.0,
         graph_height: int | None = None,
         graph_weights: dict[str, float] | None = None,
+        show_details: bool = False,
     ) -> None:
         super().__init__()
         self.sampler = sampler
@@ -440,7 +444,10 @@ class WattopApp(App):
             DEFAULT_GRAPH_WEIGHTS if graph_weights is None else dict(graph_weights)
         )
         self._timer = None
+        self.show_details = show_details
         self._panels: dict[str, GroupPanel] = {}
+        #: Heading + panel per detail group, so the toggle can hide both.
+        self._detail_rows: dict[str, tuple[Static, GroupPanel]] = {}
         self._graphs: list[Graph] = []
         #: Size from the latest Resize event. `self.size` still reports the old
         #: window inside on_resize, which left the column count one resize
@@ -464,14 +471,18 @@ class WattopApp(App):
                     graph.add_class("graph")
                     yield graph
             for group in self.sampler.groups():
-                # A group whose channels are all headlined needs no panel, and
-                # a hidden one gets none however much it holds.
-                if group in HIDDEN_GROUPS or not GroupPanel.members(self.sampler, group):
+                # A group whose channels are all headlined needs no panel.
+                if not GroupPanel.members(self.sampler, group):
                     continue
                 heading = Static(group_title(group), classes="heading", id=f"h-{group}")
                 panel = GroupPanel(group)
                 panel.add_class("panel")
                 self._panels[group] = panel
+                if group in DETAIL_GROUPS:
+                    # Built either way so the toggle is instant and the height
+                    # allocator has something to measure; just not shown yet.
+                    self._detail_rows[group] = (heading, panel)
+                    heading.display = panel.display = self.show_details
                 yield heading
                 yield panel
         # Outside the scroll container: the graphs deliberately overflow the
@@ -559,7 +570,7 @@ class WattopApp(App):
         rows = self._graph_rows()
         total = self._window()[1]
         rows_below = 1 + 2  # battery line + status line + footer
-        for group in self._panels:
+        for group in self._visible_panels():
             rows_below += 1 + len(GroupPanel.members(self.sampler, group))
         spare = max(len(rows) * (2 + BORDER_ROWS), total - rows_below - 1)
 
@@ -605,7 +616,8 @@ class WattopApp(App):
             graph.update(graph.render_content(self.sampler, gw, heights[graph.role]))
         battery = self.query_one("#battery", BatteryLine)
         battery.update(battery.render_content(self.sampler))
-        for group, panel in self._panels.items():
+        for group in self._visible_panels():
+            panel = self._panels[group]
             panel.update(panel.render_content(self.sampler, width))
 
         bits = [f"poll {self.interval:g}s"]
@@ -618,6 +630,23 @@ class WattopApp(App):
     def on_resize(self, event: events.Resize) -> None:
         self._viewport = event.size
         self._apply_columns()
+        self.refresh_panels()
+
+    def _visible_panels(self) -> list[str]:
+        """Groups currently holding rows. A closed detail group costs nothing,
+        so the graphs get its height back rather than merely its blank space."""
+        return [
+            group
+            for group in self._panels
+            if group not in self._detail_rows or self.show_details
+        ]
+
+    def action_toggle_details(self) -> None:
+        self.show_details = not self.show_details
+        for heading, panel in self._detail_rows.values():
+            heading.display = panel.display = self.show_details
+        # The graphs are sized against what sits below them, so they have to be
+        # remeasured here and not merely redrawn.
         self.refresh_panels()
 
     def action_toggle_pause(self) -> None:

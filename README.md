@@ -73,10 +73,13 @@ memory = 0.2
 
 `--graph-height N` pins every graph instead.
 
-There is no panel of per-rail power or per-zone temperatures under the graphs any more. Those
-channels are still sampled and still reach `--list`, `--once`, `--json` and `--log`; they were a
-screenful of numbers that rarely moved, holding rows the graphs wanted, and the one thing they were
-read for at a glance survives as **TEMP**.
+The panel of per-rail power and per-zone temperatures under the graphs starts closed. Press `s` to
+open it, `--details` to start a run with it open, or set `show_details = true` in `config.toml` to
+make that the default. Closed is the default because on most machines those rows are a screenful of
+numbers that rarely move, and they are rows the graphs wanted; the one thing they were read for at a
+glance already survives as **TEMP**. Either way the channels are always sampled and always reach
+`--list`, `--once`, `--json` and `--log`. If per-rail SoC power is the reason you are here, turn it
+on and leave it on.
 
 Every power graph is floored at zero on a fixed axis, so bar height means watts and one frame is
 comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-25 W by default, which is
@@ -168,10 +171,12 @@ $ wattop --once              # one snapshot, then exit
 $ wattop --once --json       # ... as JSON, for a prompt segment or an OSD
 $ wattop --json -n 60        # a stream of JSON lines
 $ wattop --log power.csv     # append samples to CSV (or .parquet with the extra)
+$ wattop --details           # start with the per-rail sensor panels open
 $ wattop -i 0.25             # faster sampling
 ```
 
-In the TUI: `q` quit, `p` pause, `+`/`-` change the interval.
+In the TUI: `q` quit, `p` pause, `s` show or hide the per-rail and per-zone sensor panels,
+`+`/`-` change the interval.
 
 `--log` writes its header from the channels discovered at startup and skips it when the file
 already has one, so start a new file rather than appending to a log written before a machine

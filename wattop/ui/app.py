@@ -37,6 +37,8 @@ HEADLINE_ROLES = (
     ("OUT", "power_out"),
     ("BATT", "battery_power"),
     ("TEMP", "temperature"),
+    ("CPU", "cpu"),
+    ("MEM", "memory"),
 )
 
 #: Roles already shown by the headline or the battery line. The group panels
@@ -53,30 +55,44 @@ CONSUMED_ROLES = frozenset(
         "battery_eta",
         "ac_online",
         "temperature",
+        "cpu",
+        "memory",
     }
 )
-CONSUMED_KEYS = frozenset({"batt.eta", ETA_KEY, "batt.full"})
+#: Keys a headline already accounts for. `mem.total` is the memory graph's own
+#: axis ceiling, printed on it -- a panel row repeating it says nothing new.
+CONSUMED_KEYS = frozenset({"batt.eta", ETA_KEY, "batt.full", "mem.total"})
+
+#: Groups that are sampled but not drawn. Every rail and every thermal zone is
+#: still read, still listed by `--list`, and still logged by `--log`; they simply
+#: no longer get a text panel under the graphs, which is where the rows the
+#: graphs wanted were going. The hottest zone survives on screen as TEMP, which
+#: is the one thing those panels were read for at a glance.
+HIDDEN_GROUPS = frozenset({"rails", "thermal"})
 
 
 #: Fraction of the window each headline graph gets, as *height*. In a landscape
 #: window the graphs sit two to a row, heaviest first, so equal weights share a
-#: row and a row is as tall as the taller of its pair: the two that actually
-#: move -- what the machine is drawing, and which way the battery is going --
-#: take the top row at 40%, the charger rail and the hottest sensor share the
-#: second at a quarter. A portrait window stacks them in one column instead,
-#: where the same weights overflow the screen and the container scrolls.
+#: row and a row is as tall as the taller of its pair. Three rows, in the order
+#: the weights put them: what the machine is drawing and which way the battery is
+#: going, then what it is doing to earn that -- processor and memory -- then the
+#: charger rail and the hottest sensor, both of which mostly sit still and are
+#: read as a number rather than as a shape. A portrait window stacks all six in
+#: one column instead, where the weights overflow the screen and it scrolls.
 #: Override per role in config.toml:
 #:
 #:     [graphs]
 #:     power_out = 0.3
 #:     battery_power = 0.3
-#:     power_in = 0.15
-#:     temperature = 0.15
+#:     cpu = 0.2
+#:     memory = 0.2
 DEFAULT_GRAPH_WEIGHTS = {
-    "power_out": 0.4,
-    "battery_power": 0.4,
-    "power_in": 0.25,
-    "temperature": 0.25,
+    "power_out": 0.30,
+    "battery_power": 0.30,
+    "cpu": 0.22,
+    "memory": 0.22,
+    "power_in": 0.16,
+    "temperature": 0.16,
 }
 
 #: Every panel costs a top and bottom border on top of its plot rows.
@@ -89,6 +105,8 @@ RAMP_FOR_ROLE = {
     "power_out": "power_out",
     "battery_power": "battery",
     "temperature": "temperature",
+    "cpu": "cpu",
+    "memory": "memory",
 }
 
 #: The power graphs live on a two-rung ladder. 0-25 W covers ordinary
@@ -446,8 +464,9 @@ class WattopApp(App):
                     graph.add_class("graph")
                     yield graph
             for group in self.sampler.groups():
-                # A group whose channels are all headlined needs no panel.
-                if not GroupPanel.members(self.sampler, group):
+                # A group whose channels are all headlined needs no panel, and
+                # a hidden one gets none however much it holds.
+                if group in HIDDEN_GROUPS or not GroupPanel.members(self.sampler, group):
                     continue
                 heading = Static(group_title(group), classes="heading", id=f"h-{group}")
                 panel = GroupPanel(group)

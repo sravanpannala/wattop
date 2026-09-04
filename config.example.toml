@@ -17,20 +17,26 @@ history  = 240    # samples kept for the graphs
 eta_window = 300.0
 
 # Fraction of the window height each headline graph gets. Roles left out share
-# whatever the panels below do not need. Defaults shown.
+# whatever is left over. Defaults shown: three rows of two in a landscape
+# window, heaviest pair first.
 [graphs]
-power_out     = 0.25
-battery_power = 0.25
+power_out     = 0.30
+battery_power = 0.30
+cpu           = 0.22
+memory        = 0.22
+power_in      = 0.16
+temperature   = 0.16
 
 # ---------------------------------------------------------------------------
 # [[sensor]] -- a reading from one of the generic sources.
 #
 # Common keys: key, label, unit, group, role, precision, scale, offset,
 #              nominal_max
-#   group  = in | out | battery | rails | thermal | other   -> which panel
+#   group  = in | out | battery | system | rails | thermal | other
+#            -> which panel. `rails` and `thermal` are read but not drawn.
 #   role   = power_in | power_out | battery_power | battery_voltage |
 #            battery_current | battery_charge | battery_level | battery_eta |
-#            ac_online
+#            ac_online | temperature | cpu | memory
 #            -> the headline slot this fills, if any
 #   scale/offset are applied as  value * scale + offset
 # ---------------------------------------------------------------------------

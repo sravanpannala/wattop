@@ -56,6 +56,10 @@ GRADIENTS = {
     # Cool at the floor, hot at the ceiling -- the ramp reads as a temperature
     # even before you look at the axis.
     "temperature": ["#1b5e20", "#558b2f", "#9e9d24", "#f9a825", "#ef6c00", "#e64a19", "#c62828"],
+    # Two more hues nothing else is using, so a glance at the colour is enough to
+    # say which graph you are looking at before the title registers.
+    "cpu": ["#4a148c", "#6a1b9a", "#7b1fa2", "#8e24aa", "#9c27b0", "#ab47bc", "#ba68c8"],
+    "memory": ["#004d40", "#00695c", "#00796b", "#00897b", "#009688", "#26a69a", "#4db6ac"],
     "default": ["#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"],
 }
 
@@ -297,6 +301,8 @@ def render_table(sampler: Sampler) -> str:
         ("IN ", "power_in"),
         ("OUT", "power_out"),
         ("BAT", "battery_power"),
+        ("CPU", "cpu"),
+        ("MEM", "memory"),
     ]
     for prefix, role in headline:
         ch = sampler.role(role)
@@ -338,6 +344,7 @@ def group_title(group: str) -> str:
         "in": "POWER IN",
         "out": "POWER OUT",
         "battery": "BATTERY",
+        "system": "SYSTEM",
         "rails": "RAILS",
         "thermal": "THERMAL",
         "other": "OTHER",
@@ -371,6 +378,12 @@ def value_style(ch: Channel, value: float) -> str:
         return "bold green" if value >= 0 else "bold yellow"
     if ch.role == "power_out":
         return "bold cyan"
+    if ch.role == "cpu":
+        return "bold magenta"
+    if ch.role == "memory":
+        # Not cyan: that is power_out's, and the two would be indistinguishable
+        # in a column of headline values.
+        return "bold turquoise2"
     if ch.unit == "degC":
         return "red" if value >= 80 else "yellow" if value >= 60 else "default"
     return "default"

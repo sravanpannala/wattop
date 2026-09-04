@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 # Panels, in display order. A group with no channels is simply not drawn.
-GROUPS = ("in", "out", "battery", "rails", "thermal", "other")
+GROUPS = ("in", "out", "battery", "system", "rails", "thermal", "other")
 
 # Semantic slots the UI headlines. At most one channel fills each; if two
 # sources claim the same role the first one registered wins.
@@ -27,6 +27,8 @@ ROLES = (
     "battery_eta",  # signed seconds: positive to empty, negative to full
     "ac_online",
     "temperature",  # the sensor worth watching, usually the hottest one
+    "cpu",  # processor utilisation, percent
+    "memory",  # physical memory in use
 )
 
 

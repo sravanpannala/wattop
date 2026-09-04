@@ -1,7 +1,8 @@
 # wattop
 
-A btop-style terminal power monitor: **power in, power out, volts and amps**, plus whatever per-rail
-SoC power the machine is willing to tell you about.
+A btop-style terminal power monitor: **power in, power out, volts and amps**, next to the processor
+and memory load that explains them, plus whatever per-rail SoC power the machine is willing to tell
+you about.
 
 It exists because btop can't do this. `btop4win` reads the battery through `GetSystemPowerStatus()`,
 which gives percent and time remaining and nothing else — the watts code path that mainline Linux
@@ -10,56 +11,85 @@ no per-rail power. Neither has a plugin system, so there is no way to add a sens
 recompiling.
 
 ```
-┌─ IN  Charger in ──────────────────────────────────────────────────────┐
-│  59.7                                    ███████████████              │
-│       ████████████████████████████████████████████████████            │
-│  58.7 ██████████████████████████████████████████████████████          │
-└────────────────────────────────────────────────────── 59.37 W ██████░─┘
-┌─ OUT  System ─────────────────────────────────────────────────────────┐
-│  29.5     ▂▃▁                ▃▃▁                                      │
-│         ▁▇███▄             ▂████▃                                     │
-│        ▂██████▅           ▃██████▄          ▂                         │
-│       ▁████████▅         ▃████████▄         █                         │
-│       ██████████▄       ▂██████████▃      ▃▄█                         │
-│       ████████████▆▂ ▁▄██████████████▅▁ ▁▅███                         │
-│   6.5 ████████████████████████████████████████                        │
-└────────────────────────────────────────────────────── 15.59 W ███░░░░─┘
-┌─ BATT  Battery ───────────────────────────────────────────────────────┐
-│  47.3                                                                 │
-│       ████████████████████████████████████████                        │
-│  42.8 ████████████████████████████████████████                        │
-└─────────────────────────────────────────────────────────── +45.09 W ──┘
-Voltage 8.629 V  Current +5.225 A  ██████████████░░░░  78.6%  49.4/62.9 Wh  charging
-
-RAILS
-USB-C ports       9.30 W  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-CPU_CLUSTER_0     1.48 W  ▆▇████▇▆▅▄▄▃▄▅▆▇███▇
-CPU_CLUSTER_1     0.74 W  ██████████████████▅▅
-GPU               0.10 W  ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇██
+╭─ OUT  System ────────────────────────────────────────────────────────╮
+│  60.0                                                                │
+│                                                                      │
+│                                                                      │
+│            ⢀⣀⣠⣤⣶⣶⣤⣤⣀⣀              ⢀⣀⣤⣤⣴⣶⣤⣤⣤⣀⡀           ⢀⣠⣤⣤⣴⣴⣤⣤⣄⡀  │
+│        ⢀⣠⣴⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤⣀⣀⣀⣀⢀⣀⣠⣤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣦⣤⣤⣤⣤⣴⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶│
+│       ⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│   0.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰───────────────────────────────────────────────── 22.93 W ████░░░░░░ ─╯
+╭─ BATT  Battery ──────────────────────────────────────────────────────╮
+│  25.0  ⢀⣀  ⢀                                                         │
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣷⣶⣷⣶⣶⣶⣴⣶⣤⣤⣤⣤⣄⣠⣀⣀⣀⢀⣀                                  │
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣾⣶⣶⣤⣤⣤⣄⣀⡀⡀⡀                    │
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣷⣶⣦⣴⣤⣄⣀           │
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣾⣶⣤⣤⣀⣀⣀ │
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│   0.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰───────────────────────────────────────────────── +7.59 W ███░░░░░░░ ─╯
+╭─ CPU  Processor ─────────────────────────────────────────────────────╮
+│ 100.0         ⣀⣠⣤⣀⡀                   ⣀⣠⣄⣀⡀                 ⣀⣠⣤⣀⡀    │
+│            ⢀⣴⣾⣿⣿⣿⣿⣿⣶⣄              ⢀⣴⣾⣿⣿⣿⣿⣿⣶⣄            ⢀⣴⣾⣿⣿⣿⣿⣿⣶⣄  │
+│          ⣀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⡀         ⣠⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⡀       ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄│
+│       ⢀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⣄⣀  ⢀⣀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣦⣤⣤⣤⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│   0.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰──────────────────────────────────────────────────── 47 % █████░░░░░ ─╯
+╭─ MEM  In use ────────────────────────────────────────────────────────╮
+│  15.6                                                                │
+│                    ⣀⣀⣀⡀             ⢀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣠⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤│
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│   0.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰──────────────────────────────────────────────── 11.01 GB ███████░░░ ─╯
+╭─ IN  Charger in ─────────────────────────────────────────────────────╮
+│  60.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│       ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+│   0.0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰───────────────────────────────────────────────── 59.45 W ██████████ ─╯
+╭─ TEMP  Hottest sensor ───────────────────────────────────────────────╮
+│ 100.0                                                                │
+│            ⣀⣀⣀⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣄⣀⣀⣀⣀⣀⣤⣤⣤⣤⣤⣤⣤⣤⣶⣶⣶⣦⣶⣦⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣶⣤⣤⣤⣤⣤│
+│  40.0 ⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿│
+╰─────────────────────────────────────────────── 69.3 degC █████░░░░░ ─╯
+Voltage 8.630 V  Current +5.220 A  ██████████████░░░░  78.6%  49.4/62.9 Wh  charging
 ```
 
-**OUT** and **BATT** take a quarter of the window each — they are the two that actually move — and
-the charger rail makes do with the leftover, since it sits at its ceiling most of the time. Retune
-per role in `config.toml`:
+Six graphs, three rows, in the order they earn: **OUT** and **BATT** are the two that actually move,
+so they take the top row at 30% of the window each. **CPU** and **MEM** sit under them at 22%, since
+what the machine is doing is the explanation for what it is drawing and the two want reading
+together. **IN** and **TEMP** get 16% on the bottom row — the charger rail sits at its ceiling most
+of the time and the hottest sensor moves slowly, so both are read as a number more often than as a
+shape. Retune per role in `config.toml`:
 
 ```toml
 [graphs]
-power_out = 0.25
-battery_power = 0.25
+power_out = 0.3
+battery_power = 0.3
+cpu = 0.2
+memory = 0.2
 ```
 
 `--graph-height N` pins every graph instead.
+
+There is no panel of per-rail power or per-zone temperatures under the graphs any more. Those
+channels are still sampled and still reach `--list`, `--once`, `--json` and `--log`; they were a
+screenful of numbers that rarely moved, holding rows the graphs wanted, and the one thing they were
+read for at a glance survives as **TEMP**.
 
 Every power graph is floored at zero on a fixed axis, so bar height means watts and one frame is
 comparable to the last. **OUT** and **BATT** sit on a two-rung ladder: 0-25 W by default, which is
 where the machine spends most of its life and where a single tall axis would squash everything into
 the bottom third, and 0-60 W for as long as the window on screen holds a sample above 25 W. Each
 picks its own rung from its own window, so a burst on one leaves the other where it was, and once
-the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares. **TEMP** is
-the one graph that does not start at zero -- it runs a fixed 40-100 degC, since the hottest sensor
-in a running machine never approaches zero and silicon throttles just under 100, so the panel height
-is all live range and doubles as "how close to too hot". Both bounds are printed on the axis, so
-what you are looking at is never ambiguous.
+the burst scrolls off the axis drops back. **IN** keeps the ceiling its rail declares, and **CPU**
+and **MEM** keep theirs: there is nothing above 100% of a processor and nothing above the RAM the
+machine has, so both axes are the real limit rather than a guess, and the memory graph prints the
+installed total as its top label. **TEMP** is the one graph that does not start at zero -- it runs a
+fixed 40-100 degC, since the hottest sensor in a running machine never approaches zero and silicon
+throttles just under 100, so the panel height is all live range and doubles as "how close to too
+hot". Both bounds are printed on the axis, so what you are looking at is never ambiguous.
 
 **BATT** plots magnitude — how hard the battery is working — and lets colour carry the direction:
 amber discharging, green charging. Pin any ceiling you would rather set yourself with
@@ -78,9 +108,19 @@ amber discharging, green charging. Pin any ceiling you would rather set yourself
 | `emi.USBC_TOTAL`, `emi.CPU_CLUSTER_0..2`, `emi.GPU` | per-rail SoC power |
 | `batt.power` / `.voltage` / `.current` / `.charge` / `.level` / `.temp` / `.cycles` | the battery device, via `IOCTL_BATTERY_QUERY_STATUS` |
 | `batt.eta.avg` | time left, from battery watts averaged over a growing window |
+| `cpu.util` | `% Processor Time` off the `Processor Information` counterset |
+| `mem.used` / `mem.total` | physical memory, from `GlobalMemoryStatusEx` |
 
 Battery `Rate` is signed, so discharging falls out of the sign and current is a real division rather
 than an estimate. Everything works **without administrator rights** and costs about 0.1 ms a sample.
+
+CPU is the not-idle fraction, the same thing btop counts and the same thing `/proc/stat` gives on
+Linux. Windows also offers `% Processor Utility`, which scales that by the frequency actually
+delivered -- it is what Task Manager shows, and it tracks the **OUT** graph more closely, because a
+core parked at its lowest clock and never quite idle is 100% busy and a couple of watts. Measured on
+this laptop, idling at about a third of nominal, Utility reads about a third of Time for the same
+work. wattop shows Time anyway: a CPU number that disagrees three-to-one with every other load meter
+on the machine costs more than the tighter correlation buys.
 
 The one reading wattop computes rather than reads is **time left**. Windows will hand you a
 `BatteryEstimatedTime`, but it is derived from the instantaneous rate, and an idle machine breathing
@@ -95,7 +135,8 @@ all. Set `eta_window` in `config.toml` to trade steadiness against how fast it n
 **Linux** — `/sys/class/hwmon` is walked and everything found is exposed, so the headline number on
 an AMD APU is `power1_average` from the `amdgpu` node (package power, the same PPT figure `ryzenadj`
 reports, no root needed). RAPL via powercap is picked up when readable, and laptops additionally get
-`/sys/class/power_supply`.
+`/sys/class/power_supply`. CPU and memory come from `/proc/stat` and `/proc/meminfo` under the
+same two keys the Windows pair uses, so the dashboard is the same screen on both.
 
 Be aware of what a Ryzen AI Max+ 395 desktop **cannot** give you: no voltage or current anywhere
 (Zen 5 uses SVI3 and no in-tree driver reads it), and no true "power in" (a desktop has no charger
@@ -132,13 +173,19 @@ $ wattop -i 0.25             # faster sampling
 
 In the TUI: `q` quit, `p` pause, `+`/`-` change the interval.
 
+`--log` writes its header from the channels discovered at startup and skips it when the file
+already has one, so start a new file rather than appending to a log written before a machine
+grew a sensor -- the new columns land in the middle of the row, not at the end.
+
 ## Adding a reading
 
-The UI never names a sensor. It lays out by **group** (`in`, `out`, `battery`, `rails`, `thermal`)
-and headlines whatever fills each **role** (`power_in`, `power_out`, `battery_power`,
-`battery_voltage`, `battery_current`, `battery_charge`, `battery_level`, `battery_eta`,
-`ac_online`). So a new reading only ever needs to declare where it belongs, and the display
-follows.
+The UI never names a sensor. It lays out by **group** (`in`, `out`, `battery`, `system`, `rails`,
+`thermal`) and headlines whatever fills each **role** (`power_in`, `power_out`, `battery_power`,
+`battery_voltage`, `battery_current`, `battery_charge`, `battery_level`, `battery_eta`, `ac_online`,
+`temperature`, `cpu`, `memory`). So a new reading only ever needs to declare where it belongs, and
+the display follows. `rails` and `thermal` are sampled but not drawn, so anything you want on
+screen wants one of the other groups or a role -- including a rail you miss, which
+`[overrides."emi.GPU"] group = "other"` puts back.
 
 That makes adding one come in three sizes.
 
@@ -184,8 +231,9 @@ costs you the rest of the dashboard. Run with `--debug` to see what declined and
 
 ```
 wattop/core/      Channel + Source protocol, registry, sampler, config, derived expressions
-wattop/sources/   win_energy_meter, win_battery, linux_hwmon, linux_powercap,
-                  linux_power_supply, generic (sysfs/exec/http_json/pdh)
+wattop/sources/   win_energy_meter, win_battery, win_thermal, win_system,
+                  linux_hwmon, linux_powercap, linux_power_supply, linux_system,
+                  generic (sysfs/exec/http_json/pdh)
 wattop/ui/        the Textual dashboard
 wattop/render.py  sparklines, bars, the text tables used by --list and --once
 ```

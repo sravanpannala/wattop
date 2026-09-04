@@ -17,9 +17,14 @@ license=('Apache-2.0')
 depends=('python' 'python-textual' 'python-rich')
 optdepends=('python-pyarrow: log to Parquet instead of CSV')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
-# Built from the GitHub release tarball rather than the PyPI sdist, per
-# Arch RFC 0020.
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# The sdist attached to the GitHub release, rather than PyPI, per Arch RFC
+# 0020. GitHub's auto-generated tag tarball would work too, but its bytes are
+# regenerated on demand and the checksum has moved before now; a release asset
+# is uploaded once and never changes.
+#
+# SKIP here is a placeholder. The release workflow writes the real checksum
+# into the copy it attaches to the release, which is the one to hand people.
+source=("$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
@@ -33,6 +38,8 @@ check() {
   # real check and not just an import test.
   PYTHONPATH="$PWD" python -m pytest -q || echo "pytest unavailable, skipping"
 }
+
+# vim: set ts=2 sw=2 et:
 
 package() {
   cd "$pkgname-$pkgver"

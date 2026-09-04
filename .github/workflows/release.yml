@@ -80,6 +80,15 @@ jobs:
           python packaging/scoop/stamp.py "${GITHUB_REF_NAME}" dist/wattop.pyz
           cp packaging/scoop/wattop.json dist/
 
+      # Attach a PKGBUILD pinned to this release's own sdist, so an Arch user
+      # needs one URL and two commands and makepkg verifies what it downloads.
+      - name: Stamp the PKGBUILD
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sum=$(sha256sum "dist/wattop-${version}.tar.gz" | cut -d' ' -f1)
+          sed -e "s/^pkgver=.*/pkgver=${version}/"               -e "s/^sha256sums=.*/sha256sums=('${sum}')/"               packaging/aur/PKGBUILD > dist/PKGBUILD
+          grep -E '^(pkgver|sha256sums)=' dist/PKGBUILD
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

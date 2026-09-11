@@ -28,7 +28,10 @@ class Sample:
 class Sampler:
     sources: list[Source]
     derived: list[DerivedChannel] = field(default_factory=list)
-    history_len: int = 240
+    #: Braille packs two samples into a cell, so this is twice the widest plot
+    #: it can fill: 480 covers the ~240 cells of a 250-column portrait window,
+    #: where 240 samples left the left third of the graph permanently blank.
+    history_len: int = 480
     #: `[overrides."key"]` from config.toml -- relabel/regroup built-in channels.
     overrides: dict[str, dict] = field(default_factory=dict)
 

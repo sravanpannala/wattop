@@ -7,7 +7,8 @@
 
 [general]
 interval = 1.0    # seconds between samples
-history  = 240    # samples kept for the graphs
+# Two samples per braille cell, so this is twice the widest plot it can fill.
+history  = 480    # samples kept for the graphs
 
 # Seconds of battery power averaged into the "time left" figure. The window
 # grows to this from the last plug/unplug, then rolls. Longer is steadier and

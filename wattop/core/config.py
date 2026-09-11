@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class Config:
     interval: float = 1.0
-    history: int = 240
+    history: int = 480
     #: Seconds of battery power averaged into the time-left estimate.
     eta_window: float = 300.0
     path: Path | None = None

@@ -149,6 +149,38 @@ async def test_a_wide_window_uses_two_columns(sampler):
 
 
 @pytest.mark.asyncio
+async def test_graphs_sharing_a_row_end_at_the_same_line():
+    """Bottom borders must line up across a grid row.
+
+    Four roles are the case the heaviest-first sort cannot fix on its own: the
+    weights pair 0.30 with 0.22 and 0.22 with 0.16, so each row has a shorter
+    member, and `grid-rows: auto` content-sizes it into a ragged gap.
+    """
+
+    class FourRoles(FakeSource):
+        def channels(self):
+            return [
+                Channel("out.sys", "System", "W", "out", "power_out", 2, nominal_max=60.0),
+                Channel("cpu.util", "Processor", "%", "system", "cpu", 0, nominal_max=100.0),
+                Channel("mem.used", "In use", "GB", "system", "memory", 2, nominal_max=16.0),
+                Channel("temp.soc", "SoC", "degC", "thermal", "temperature", 1),
+            ]
+
+        def read(self):
+            return {"out.sys": 14.0, "cpu.util": 15.0, "mem.used": 9.0, "temp.soc": 61.0}
+
+    four = Sampler(sources=[FourRoles()], derived=[], history_len=60, overrides={})
+    app = WattopApp(sampler=four, interval=0.1)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await pilot.pause()
+        assert app._columns() == 2
+        rows = app._graph_rows()
+        assert len(rows) == 2                       # two full pairs, no odd one out
+        for row in rows:
+            assert len({g.region.height for g in row}) == 1
+
+
+@pytest.mark.asyncio
 async def test_graph_height_pins_every_graph(sampler):
     app = make_app(sampler, graph_height=5)
     async with app.run_test(size=(120, 44)) as pilot:
@@ -194,6 +226,58 @@ async def test_repeated_start_and_stop_is_clean(sampler):
             await pilot.pause()
             await pilot.press("s")
             await pilot.pause()
+
+
+def test_a_group_panel_fits_the_width_it_was_sized_to():
+    """A cros_ec-length label in a narrow window drives every clamp at once.
+
+    The columns are fixed-width, so a budget computed against the wrong width
+    puts them past the edge and Rich tears each row onto a second line.
+    """
+    import io
+
+    from rich.console import Console
+
+    from wattop.ui.app import GroupPanel
+
+    class LongLabels(FakeSource):
+        def channels(self):
+            return [
+                Channel("out.sys", "System", "W", "out", "power_out", 2),
+                Channel("rail.mem", "mainboard_memory@4d", "W", "rails", None, 2),
+                Channel("rail.gpu", "GPU rail", "W", "rails", None, 2),
+            ]
+
+        def read(self):
+            return {"out.sys": 14.0, "rail.mem": 1.25, "rail.gpu": 2.5}
+
+    wide_labels = Sampler(sources=[LongLabels()], derived=[], history_len=60, overrides={})
+    wide_labels.sample()
+    panel = GroupPanel("rails")
+    for width in (24, 34, 48, 60, 120):
+        console = Console(file=io.StringIO(), width=width, legacy_windows=False)
+        console.print(panel.render_content(wide_labels, width))
+        lines = console.file.getvalue().splitlines()
+        assert lines
+        assert max(len(line) for line in lines) <= width
+
+
+def test_a_five_figure_axis_label_does_not_widen_the_top_row():
+    """`hi` gets a 6-cell field; 10000.0 needs 7 and used to push row 0 one cell
+    past the crop, costing the top row its newest sample."""
+    from wattop.ui.app import Graph
+
+    pinned = Sampler(
+        sources=[FakeSource()],
+        derived=[],
+        history_len=60,
+        overrides={"out.sys": {"nominal_max": 12000.0}},
+    )
+    pinned.sample()
+    panel = Graph("OUT", "power_out").render_content(pinned, width=40, height=6)
+    lines = panel.renderable.plain.split("\n")
+    assert len(lines) == 6
+    assert len({len(line) for line in lines}) == 1
 
 
 class TestAxisLadder:

@@ -146,6 +146,27 @@ TEMP_RANGE = (40.0, 100.0)
 STEP_HYSTERESIS = 0.9
 
 
+def axis_label(value: float, width: int) -> str:
+    """One axis figure, right-aligned in `width` cells and never wider.
+
+    The field is narrow enough that a five-figure ceiling -- a desktop package
+    rail in milliwatts, a memory axis in MB -- does not fit at one decimal, and
+    one cell of overflow is not a cosmetic loss: it pushes that row past the
+    crop, so the top of the graph silently drops its newest sample. Give up
+    precision instead, decimal first and then the digits themselves.
+    """
+    text = f"{value:.1f}"
+    if len(text) > width:
+        text = f"{value:.0f}"
+    if len(text) > width:
+        text = f"{value:.2g}"
+    if len(text) > width:
+        # Past a million even 1.2e+06 is a cell too many; a bare exponent still
+        # says which order of magnitude the top of the graph means.
+        text = f"{value:.0e}"
+    return f"{text:>{width}} "
+
+
 class Graph(Static):
     """One headline channel as a full-height btop-style area graph."""
 
@@ -255,9 +276,9 @@ class Graph(Static):
         body = Text(no_wrap=True)
         for i, row in enumerate(rows):
             if i == 0:
-                axis = f"{hi:>{label_w - 2}.1f} "
+                axis = axis_label(hi, label_w - 2)
             elif i == height - 1:
-                axis = f"{lo:>{label_w - 2}.1f} "
+                axis = axis_label(lo, label_w - 2)
             else:
                 axis = " " * (label_w - 1)
             body.append(axis, style="dim")
@@ -392,7 +413,10 @@ class GroupPanel(Static):
         # Sized to the content: cros_ec labels like "mainboard_memory@4d" run
         # well past any fixed width and tear the columns apart.
         label_w = max(12, min(34, max((len(c.label) for c in members), default=12)))
-        spark_width = max(8, min(40, width - label_w - 20))
+        # `width` is this widget's content width, so the sparkline gets whatever
+        # the label, the 12-cell value column and the two inter-column gaps leave
+        # -- the three columns then add up to exactly the width available.
+        spark_width = max(8, min(40, width - label_w - 14))
 
         table = Table.grid(padding=(0, 1))
         table.add_column(justify="left", width=label_w)
@@ -590,9 +614,10 @@ class WattopApp(App):
 
         rows = self._graph_rows()
         total = self._window()[1]
-        rows_below = 1 + 2  # battery line + status line + footer
+        rows_below = 2 + 2  # battery line + its pad row, status line, footer
         for group in self._visible_panels():
-            rows_below += 1 + len(GroupPanel.members(self.sampler, group))
+            # Heading, one row per member, and the panel's own bottom padding.
+            rows_below += 2 + len(GroupPanel.members(self.sampler, group))
         spare = max(len(rows) * (2 + BORDER_ROWS), total - rows_below - 1)
 
         heights: dict[str, int] = {}
@@ -624,6 +649,16 @@ class WattopApp(App):
         while used() > spare and unweighted and max(heights[r] for r in unweighted) > 2:
             tallest = max(unweighted, key=lambda r: heights[r])
             heights[tallest] -= 1
+
+        # A row is as tall as its tallest member -- that is what used() already
+        # charges for it -- so the shorter graph stretches to fill the row it is
+        # paying for, instead of leaving a ragged gap under its bottom border.
+        # The heaviest-first sort in compose only pairs equal weights when there
+        # are six of them; four roles pair 0.30 with 0.22.
+        for row in rows:
+            tallest_row = max(heights[g.role] for g in row)
+            for graph in row:
+                heights[graph.role] = tallest_row
         return heights
 
     def refresh_panels(self) -> None:
@@ -638,13 +673,17 @@ class WattopApp(App):
             # The widget's own content region, not the app width: the graph
             # cannot know what chrome (scrollbar, padding) sits around it.
             # Fallback for the on_mount refresh that runs before first layout.
-            gw = graph.content_size.width or (width - 6)
+            gw = graph.content_size.width or (width // self._columns() - 4)
             graph.update(graph.render_content(self.sampler, gw, heights[graph.role]))
         battery = self.query_one("#battery", BatteryLine)
         battery.update(battery.render_content(self.sampler))
         for group in self._visible_panels():
             panel = self._panels[group]
-            panel.update(panel.render_content(self.sampler, width))
+            # Its own content width too, for the same reason: the fixed-width
+            # columns are budgeted against it, and a panel sized to the whole app
+            # runs its last column past the edge on a narrow window.
+            pw = panel.content_size.width or (width - 6)
+            panel.update(panel.render_content(self.sampler, pw))
 
         bits = [f"poll {self.interval:g}s"]
         if self.paused:

@@ -18,7 +18,7 @@ def test_defaults_when_no_file_is_given(tmp_path, monkeypatch):
     monkeypatch.setattr("wattop.core.config.default_paths", lambda: [tmp_path / "absent.toml"])
     cfg = load(None)
     assert cfg.interval == 1.0
-    assert cfg.history == 240
+    assert cfg.history == 480
     assert cfg.show_details is False
     assert cfg.path is None
 

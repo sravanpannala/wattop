@@ -73,8 +73,10 @@ CONSUMED_KEYS = frozenset({"batt.eta", ETA_KEY, "batt.full", "mem.total"})
 #: are a screenful of numbers that rarely move and the hottest zone already
 #: survives on screen as TEMP. `s` opens them, and `show_details` in the config
 #: starts them open -- which is what you want on a machine whose per-rail power
-#: is the reason you are running this at all.
-DETAIL_GROUPS = frozenset({"rails", "thermal"})
+#: is the reason you are running this at all. The catch-all "other" group -- GPU
+#: clocks and whatever else a source could read but not classify -- is detail by
+#: the same standard: real, occasionally interesting, never headline.
+DETAIL_GROUPS = frozenset({"rails", "thermal", "other"})
 
 
 #: Fraction of the window each headline graph gets, as *height*. In a landscape

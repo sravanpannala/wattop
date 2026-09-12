@@ -6,6 +6,26 @@ All notable changes to wattop are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-12
+
+### Added
+- A **FAN** headline graph: the fastest fan of however many the machine
+  reports, as a derived aggregate the way TEMP is the hottest sensor. Fanless
+  machines get no panel. `fan` is also a valid `role` for `[[sensor]]` entries.
+- Sources read the axis ceilings sysfs already declares -- `powerN_cap_max` /
+  `powerN_cap` and `fanN_max` from hwmon, `constraint_0_max_power_uw` from RAPL
+  powercap -- into `nominal_max`, where the stepped axes treat them as the top
+  rung. The invented 140 W on the hwmon headline is gone.
+
+### Changed
+- Above their tuned rungs the power axes climb in 25 W steps instead of the
+  1-2-5 grid, whose 100-to-200 doubling let a 0.06 W excursion past a 100 W cap
+  waste half the panel for the rest of the run. The fan axis climbs thousands.
+  A reading past a declared ceiling steps up rather than clipping.
+- TEMP and FAN moved up to the 22% height tier, and headline pairing order in a
+  weight tie is now deliberate: CPU with MEM, FAN beside OUT where roles are
+  few, TEMP taking the spanned row in an odd set.
+
 ## [0.1.2] - 2026-09-11
 
 ### Fixed

@@ -14,7 +14,7 @@ pkgdesc="btop-style terminal power monitor: power in/out, volts and amps, per-ra
 arch=('any')
 url="https://github.com/sravanpannala/wattop"
 license=('Apache-2.0')
-depends=('python' 'python-textual' 'python-rich')
+depends=('python' 'python-textual' 'python-rich' 'python-setproctitle')
 optdepends=('python-pyarrow: log to Parquet instead of CSV')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
 # The sdist attached to the GitHub release, rather than PyPI, per Arch RFC

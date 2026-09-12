@@ -22,6 +22,14 @@ log = logging.getLogger("wattop")
 LIST_SETTLE = 0.15
 
 
+try:
+    from setproctitle import setproctitle
+except ImportError:
+    # Declared only for Linux (see pyproject), and a distro package may drop it
+    # anyway. Its absence costs one cosmetic nicety, never the tool.
+    setproctitle = None
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="wattop",
@@ -90,6 +98,16 @@ def make_sampler(args):
 
 
 def main(argv: list[str] | None = None) -> int:
+    # tmux and byobu name a window after `pane_current_command`, which is the
+    # basename of argv[0] in the process's /proc cmdline -- and every way of
+    # starting wattop puts the interpreter there, so the window reads
+    # "python3". The OSC title the app writes only reaches the terminal's own
+    # tab, and re-exec'ing with argv[0] relabeled breaks the interpreter's venv
+    # discovery, which keys off argv[0] too. setproctitle rewrites the argv
+    # memory after startup, sidestepping both.
+    if setproctitle is not None:
+        setproctitle("wattop")
+
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.WARNING,

@@ -35,6 +35,12 @@ dependencies = [
     # Imported directly by wattop/ui/app.py. Textual pulls it in too, but that
     # is its business and not a promise, so declare what we import.
     "rich>=13",
+    # tmux and byobu name windows from /proc cmdline's argv[0], which for any
+    # Python launch is the interpreter -- so the window says "python3" until the
+    # argv is rewritten in place. Linux-only: that is where the multiplexers
+    # live, and it keeps Windows ARM64 free of a wheel it does not need. The
+    # import is guarded, so packagers may drop it and lose only the name.
+    "setproctitle>=1.3; sys_platform == 'linux'",
 ]
 dynamic = ["version"]
 

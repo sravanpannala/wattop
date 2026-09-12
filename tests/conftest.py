@@ -47,6 +47,26 @@ def hwmon_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def hwmon_declared_root(tmp_path: Path) -> Path:
+    """A node that publishes its own ceilings -- the files amdgpu happens not to
+    export, and which the axis should prefer to any figure wattop invents."""
+    return write_tree(
+        tmp_path / "hwmon-declared",
+        {
+            "hwmon0/name": "amdgpu\n",
+            "hwmon0/power1_average": "31675000\n",
+            "hwmon0/power1_cap_max": "100000000\n",   # uW -> 100 W
+            # The cap in force, which is only the fallback: a cap can be lowered
+            # at runtime, and the axis wants the rail's real headroom.
+            "hwmon0/power1_cap": "65000000\n",
+            "hwmon1/name": "cros_ec\n",
+            "hwmon1/fan1_input": "1257\n",
+            "hwmon1/fan1_max": "5200\n",              # RPM, unscaled
+        },
+    )
+
+
+@pytest.fixture
 def battery_root(tmp_path: Path) -> Path:
     """A laptop reporting energy in Wh, discharging, with the mains unplugged."""
     return write_tree(
@@ -75,5 +95,6 @@ def powercap_root(tmp_path: Path) -> Path:
             "intel-rapl:0/name": "package-0\n",
             "intel-rapl:0/energy_uj": "123456789\n",
             "intel-rapl:0/max_energy_range_uj": "262143328850\n",
+            "intel-rapl:0/constraint_0_max_power_uw": "65000000\n",  # uW -> 65 W
         },
     )

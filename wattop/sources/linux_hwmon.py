@@ -99,7 +99,20 @@ class HwmonSource:
                 # than "acpitz_0 temp1_input" and loses nothing.
                 nice = f"{chip} {label or stem}"
                 candidates.append(
-                    (key, path, scale, Channel(key, nice, unit, group, None, precision))
+                    (
+                        key,
+                        path,
+                        scale,
+                        Channel(
+                            key,
+                            nice,
+                            unit,
+                            group,
+                            None,
+                            precision,
+                            nominal_max=_declared_max(node, stem, unit),
+                        ),
+                    )
                 )
 
         # Give the power_out role to the most meaningful package-power reading.
@@ -116,7 +129,18 @@ class HwmonSource:
         for key, path, scale, ch in sorted(candidates, key=rank):
             if not headline_taken and ch.unit == "W":
                 ch = Channel(
-                    ch.key, ch.label, ch.unit, "out", "power_out", ch.precision, nominal_max=140.0
+                    ch.key,
+                    ch.label,
+                    ch.unit,
+                    "out",
+                    "power_out",
+                    ch.precision,
+                    # Whatever the driver itself declares, and nothing if it
+                    # declares nothing -- the axis then comes off the rung ladder
+                    # in the UI, which is measured rather than guessed. The number
+                    # that used to sit here was invented for one reference laptop
+                    # and applied to every machine hwmon runs on.
+                    nominal_max=ch.nominal_max,
                 )
                 headline_taken = True
             elif ch.unit == "W":
@@ -150,8 +174,41 @@ def _classify(name: str):
     return None
 
 
+def _declared_max(node: Path, stem: str, unit: str) -> float | None:
+    """The ceiling this channel's own driver declares, if it declares one.
+
+    Worth reading because it is the one honest axis ceiling on the machine: a
+    box held at a 100 W cap wants a 100 W graph, not the 125 the step ladder
+    rounds up to and certainly not a figure invented for other hardware. hwmon
+    spells it per kind -- a power rail's cap in `powerN_cap_max`, or
+    `powerN_cap` where only the setting in force is exposed (both microwatts),
+    and a tachometer's in `fanN_max` (whole RPM, like `fanN_input` beside it).
+
+    Nothing obliges a driver to export any of them -- the amdgpu node on this
+    machine exports none -- so None is the ordinary answer and means unknown.
+    """
+    if unit == "W":
+        for name in (f"{stem}_cap_max", f"{stem}_cap"):
+            value = _read_float(node / name)
+            if value is not None:
+                return value * 1e-6
+    elif unit == "RPM":
+        return _read_float(node / f"{stem}_max")
+    return None
+
+
 def _read_text(path: Path) -> str | None:
     try:
         return path.read_text(errors="replace").strip()
     except OSError:
+        return None
+
+
+def _read_float(path: Path) -> float | None:
+    raw = _read_text(path)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
         return None

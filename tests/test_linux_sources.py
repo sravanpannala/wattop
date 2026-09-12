@@ -54,6 +54,40 @@ class TestHwmon:
         src.available()
         assert sum(c.role == "power_out" for c in src.channels()) == 1
 
+    def test_a_node_declaring_no_ceiling_declares_none(self, hwmon_root):
+        """amdgpu on this machine publishes no cap at all. Inventing one -- the
+        140 W that used to be hardcoded here -- put every machine on a reference
+        laptop's axis; None sends the UI to its measured rung ladder instead."""
+        src = HwmonSource(root=hwmon_root)
+        src.available()
+        assert by_key(src)["hwmon.amdgpu.power1_average"].nominal_max is None
+
+    def test_a_published_power_cap_becomes_the_ceiling(self, hwmon_declared_root):
+        src = HwmonSource(root=hwmon_declared_root)
+        src.available()
+        ch = by_key(src)["hwmon.amdgpu.power1_average"]
+        assert ch.role == "power_out"
+        assert ch.nominal_max == pytest.approx(100.0)  # 100000000 uW
+
+    def test_the_cap_in_force_stands_in_when_no_maximum_is_published(
+        self, hwmon_declared_root
+    ):
+        (hwmon_declared_root / "hwmon0" / "power1_cap_max").unlink()
+        src = HwmonSource(root=hwmon_declared_root)
+        src.available()
+        assert by_key(src)["hwmon.amdgpu.power1_average"].nominal_max == pytest.approx(65.0)
+
+    def test_a_published_fan_maximum_becomes_the_ceiling(self, hwmon_declared_root):
+        """RPM, so no scaling -- unlike every power file in this tree."""
+        src = HwmonSource(root=hwmon_declared_root)
+        src.available()
+        assert by_key(src)["hwmon.cros_ec.fan1_input"].nominal_max == pytest.approx(5200.0)
+
+    def test_a_fan_without_a_published_maximum_declares_none(self, hwmon_root):
+        src = HwmonSource(root=hwmon_root)
+        src.available()
+        assert by_key(src)["hwmon.cros_ec.fan1_input"].nominal_max is None
+
     def test_unpopulated_voltage_rails_are_dropped(self, hwmon_root):
         """vddgfx reads a hard zero forever; a channel stuck at 0.000 V is
         worse than an absent one."""
@@ -138,6 +172,19 @@ class TestPowercap:
             src.available()
         finally:
             energy.chmod(0o644)
+
+    def test_the_long_term_limit_becomes_the_ceiling(self, powercap_root):
+        """Read once at discovery: a cap does not move on the timescale of a
+        poll."""
+        src = PowercapSource(root=powercap_root)
+        assert src.available()
+        assert by_key(src)["rapl.package-0"].nominal_max == pytest.approx(65.0)
+
+    def test_an_undeclared_limit_leaves_the_ceiling_unknown(self, powercap_root):
+        (powercap_root / "intel-rapl:0" / "constraint_0_max_power_uw").unlink()
+        src = PowercapSource(root=powercap_root)
+        assert src.available()
+        assert by_key(src)["rapl.package-0"].nominal_max is None
 
     def test_declines_when_the_tree_does_not_exist(self, tmp_path):
         assert not PowercapSource(root=tmp_path / "nope").available()

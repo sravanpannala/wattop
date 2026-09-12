@@ -28,7 +28,8 @@ class PowercapSource:
 
     def __init__(self, root: Path = POWERCAP_ROOT) -> None:
         self._root = root
-        self._domains: list[tuple[str, Path, float]] = []  # key, energy file, wrap
+        # key, energy file, wrap, declared ceiling in W (None where undeclared)
+        self._domains: list[tuple[str, Path, float, float | None]] = []
         self._prev: dict[str, tuple[float, float]] = {}  # key -> (uj, monotonic)
 
     def available(self) -> bool:
@@ -40,19 +41,28 @@ class PowercapSource:
                 continue  # 0400 and we are not root
             name = _read_text(node / "name") or node.name
             wrap = _read_float(node / "max_energy_range_uj") or 0.0
-            self._domains.append((f"rapl.{name}", energy, wrap))
+            # The domain's long-term power limit, where the firmware publishes
+            # one: a real ceiling for this rail, read once because a cap does not
+            # move on the timescale of a poll. Microwatts, like everything else
+            # powercap counts in. Not every domain or every firmware has it --
+            # `constraint_0_*` is only conventionally the long-term one -- so an
+            # absent file is unremarkable and leaves the ceiling unknown.
+            cap = _read_float(node / "constraint_0_max_power_uw")
+            self._domains.append(
+                (f"rapl.{name}", energy, wrap, cap * 1e-6 if cap else None)
+            )
         return bool(self._domains)
 
     def channels(self) -> list[Channel]:
         return [
-            Channel(key, f"RAPL {key.split('.', 1)[1]}", "W", "rails", None, 2)
-            for key, _path, _wrap in self._domains
+            Channel(key, f"RAPL {key.split('.', 1)[1]}", "W", "rails", None, 2, nominal_max=cap)
+            for key, _path, _wrap, cap in self._domains
         ]
 
     def read(self) -> dict[str, float]:
         now = time.monotonic()
         out: dict[str, float] = {}
-        for key, path, wrap in self._domains:
+        for key, path, wrap, _cap in self._domains:
             uj = _read_float(path)
             if uj is None:
                 continue

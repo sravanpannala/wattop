@@ -181,6 +181,38 @@ async def test_graphs_sharing_a_row_end_at_the_same_line():
 
 
 @pytest.mark.asyncio
+async def test_fan_channels_earn_a_headline_graph_of_the_fastest_one():
+    """The FAN graph is the fastest-fan aggregate, so it exists only on a machine
+    that reports tachometers -- and once it does, the aggregate belongs to the
+    headline, while the individual fans keep their rows in the thermal panel."""
+    from wattop.core.aggregates import FASTEST_FAN_KEY, attach_builtin_aggregates
+    from wattop.ui.app import GroupPanel
+
+    class Fans(FakeSource):
+        def channels(self):
+            return [
+                *super().channels(),
+                Channel("fan.cpu", "fan1", "RPM", "thermal", None, 0),
+                Channel("fan.gpu", "fan2", "RPM", "thermal", None, 0),
+            ]
+
+        def read(self):
+            return {**super().read(), "fan.cpu": 1823.0, "fan.gpu": 2400.0}
+
+    fanned = Sampler(sources=[Fans()], derived=[], history_len=60, overrides={})
+    attach_builtin_aggregates(fanned)
+    app = WattopApp(sampler=fanned, interval=0.1)
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        assert "fan" in {g.role for g in app._graphs}
+        assert app.query_one("#graph-fan")
+
+        rows = {ch.key for ch in GroupPanel.members(fanned, "thermal")}
+        assert FASTEST_FAN_KEY not in rows      # consumed by the headline
+        assert {"fan.cpu", "fan.gpu"} <= rows   # still listed behind `s`
+
+
+@pytest.mark.asyncio
 async def test_graph_height_pins_every_graph(sampler):
     app = make_app(sampler, graph_height=5)
     async with app.run_test(size=(120, 44)) as pilot:
@@ -301,10 +333,60 @@ class TestAxisLadder:
         assert g._rung(250.0) >= 250.0
 
     def test_above_the_ladder_the_axis_is_still_a_round_number(self):
-        assert self.graph()._rung(120.0) == 200.0
+        assert self.graph()._rung(120.0) == 125.0
+
+    def test_a_hair_over_a_round_cruise_costs_one_step_not_a_doubling(self):
+        """The 1-2-5 grid gave a box cruising at 100 W a 200 W axis for the rest
+        of the run on the strength of one 100.06 W sample."""
+        assert self.graph()._rung(100.06) == 125.0
+
+    def test_a_declared_ceiling_is_the_rung(self):
+        """A machine held at its cap should fill the panel, not 80% of it."""
+        assert self.graph()._rung(100.06, cap=120.0) == 120.0
+
+    def test_a_reading_past_the_declared_ceiling_steps_rather_than_clips(self):
+        """A cap is a setting, not a law of physics, and drivers do report
+        excursions past it."""
+        assert self.graph()._rung(130.0, cap=120.0) == 150.0
 
     def test_hysteresis_holds_the_taller_axis_just_below_a_rung(self):
         g = self.graph()
         g._rung(40.0)                       # up to 60
         assert g._rung(24.0) == 60.0        # inside the dead band, hold
         assert g._rung(10.0) == 25.0        # clear of it, drop back
+
+    def test_hysteresis_works_the_same_across_the_steps_above_the_ladder(self):
+        g = self.graph()
+        g._rung(100.06)                     # up to 125
+        assert g._rung(99.0) == 125.0       # inside the dead band, hold
+        assert g._rung(85.0) == 100.0       # clear of it, drop a step
+
+
+class TestFanAxisSteps:
+    """The fan climbs the thousands, not the 1-2-5 grid: that grid's 2000-5000
+    gap left a cruising fan in the bottom half of the panel after one burst."""
+
+    def graph(self):
+        from wattop.ui.app import Graph
+
+        return Graph("FAN", "fan")
+
+    def test_a_cruising_fan_gets_the_next_thousand(self):
+        assert self.graph()._rung(1764.0) == 2000.0
+
+    def test_a_burst_past_a_rung_takes_the_next_one_not_5000(self):
+        assert self.graph()._rung(2100.0) == 3000.0
+
+    def test_a_stopped_fan_still_has_an_axis(self):
+        assert self.graph()._rung(0.0) == 1000.0
+
+    def test_a_declared_fan_max_is_the_top_rung(self):
+        """An EC that publishes fanN_max knows the blower better than the
+        thousands do."""
+        assert self.graph()._rung(1764.0, cap=2400.0) == 2400.0
+
+    def test_the_axis_relaxes_once_the_burst_scrolls_off(self):
+        g = self.graph()
+        g._rung(2100.0)                     # up to 3000
+        assert g._rung(1900.0) == 3000.0    # inside the dead band, hold
+        assert g._rung(1700.0) == 2000.0    # clear of it, drop back

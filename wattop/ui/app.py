@@ -9,6 +9,7 @@ of any sensor. That is what lets the same screen describe a Snapdragon laptop
 from __future__ import annotations
 
 import logging
+import math
 import platform
 from typing import ClassVar
 
@@ -36,13 +37,19 @@ from wattop.render import (
 
 log = logging.getLogger("wattop")
 
+#: The sort in `compose` is heaviest-first and stable, so within a weight tier
+#: this tuple's order decides who pairs with whom: FAN ahead of CPU and MEM so
+#: it rises next to OUT when both rails and a battery are missing, TEMP last so
+#: an odd set leaves it -- the graph that reads fine at any width -- the one
+#: spanning the bottom row.
 HEADLINE_ROLES = (
     ("IN", "power_in"),
     ("OUT", "power_out"),
     ("BATT", "battery_power"),
-    ("TEMP", "temperature"),
+    ("FAN", "fan"),
     ("CPU", "cpu"),
     ("MEM", "memory"),
+    ("TEMP", "temperature"),
 )
 
 #: Roles already shown by the headline or the battery line. The group panels
@@ -59,6 +66,10 @@ CONSUMED_ROLES = frozenset(
         "battery_eta",
         "ac_online",
         "temperature",
+        # The fastest-fan aggregate only, not the fans it is drawn from: the
+        # individual tachometers keep their rows in the thermal panel exactly as
+        # the individual temperature sensors do.
+        "fan",
         "cpu",
         "memory",
     }
@@ -81,12 +92,13 @@ DETAIL_GROUPS = frozenset({"rails", "thermal", "other"})
 
 #: Fraction of the window each headline graph gets, as *height*. In a landscape
 #: window the graphs sit two to a row, heaviest first, so equal weights share a
-#: row and a row is as tall as the taller of its pair. Three rows, in the order
-#: the weights put them: what the machine is drawing and which way the battery is
-#: going, then what it is doing to earn that -- processor and memory -- then the
-#: charger rail and the hottest sensor, both of which mostly sit still and are
-#: read as a number rather than as a shape. A portrait window stacks all six in
-#: one column instead, where the weights overflow the screen and it scrolls.
+#: row and a row is as tall as the taller of its pair. In the order the weights
+#: put them: what the machine is drawing and which way the battery is going, then
+#: the broad middle tier -- processor, memory, and the thermal pair that answers
+#: for them, fan and hottest sensor -- then the charger rail alone, which sits at
+#: its ceiling most of the time and is read as a number rather than as a shape.
+#: A portrait window stacks the whole set in one column
+#: instead, where the weights overflow the screen and it scrolls.
 #: Override per role in config.toml:
 #:
 #:     [graphs]
@@ -100,7 +112,8 @@ DEFAULT_GRAPH_WEIGHTS = {
     "cpu": 0.22,
     "memory": 0.22,
     "power_in": 0.16,
-    "temperature": 0.16,
+    "temperature": 0.22,
+    "fan": 0.22,
 }
 
 #: Every panel costs a top and bottom border on top of its plot rows.
@@ -113,6 +126,7 @@ RAMP_FOR_ROLE = {
     "power_out": "power_out",
     "battery_power": "battery",
     "temperature": "temperature",
+    "fan": "fan",
     "cpu": "cpu",
     "memory": "memory",
 }
@@ -128,11 +142,36 @@ RAMP_FOR_ROLE = {
 #: on this machine runs 15-19 W with the odd excursion to ~22, so a 20 W rung
 #: would be crossed every few seconds and the graph would live on 60 W for the
 #: sake of a blip. A rung is only useful where the data is not.
+#:
+#: Above the tuned rungs the ladder continues wherever the hardware points it: a
+#: ceiling the driver declares (`nominal_max`, discovered from sysfs or pinned in
+#: config) joins the rungs as the top one, and past that the axis climbs in
+#: POWER_STEP multiples.
 POWER_STEPS = (25.0, 60.0)
 
-#: Roles on that ladder. IN keeps whatever nominal_max its source declares and
-#: TEMP keeps its own fixed span.
-STEPPED_ROLES = frozenset({"power_out", "battery_power"})
+#: The step above the tuned rungs, and above any declared ceiling. The 1-2-5 grid
+#: this replaced was pathological on exactly the machines the rungs do not cover:
+#: a box cruising against a 100 W cap that reads 100.06 W once opened a 200 W
+#: axis and -- hysteresis holding it -- kept it for the rest of the run, so the
+#: series it was opened for spent that run in the bottom half of the panel. A
+#: 25 W step bounds the wasted headroom at one step: 100.06 W opens 125, not 200.
+#: The figure is POWER_STEPS[0] for a reason -- the same quantum the bottom rung
+#: is, so OUT and BATT still land on the same round numbers as each other.
+POWER_STEP = 25.0
+
+#: The fan graph steps in thousands instead. No absolute ladder can be tuned for
+#: it -- a laptop blower tops out near 3000 RPM where a tower's case fan idles --
+#: and the 1-2-5 grid the run-peak path would use has no step between 2000 and
+#: 5000, so one spin-up past 2000 left a cruising fan in the bottom half of the
+#: panel for the rest of the run. The next thousand up is snug at cruise, still
+#: never clips a burst, and reads as a round figure on the axis. A `fanN_max` the
+#: EC declares takes precedence as the top rung, the same way it does for power.
+FAN_STEP = 1000.0
+
+#: Roles on a rung ladder, chosen from the window on screen rather than the
+#: run's peak. IN keeps whatever nominal_max its source declares and TEMP keeps
+#: its own fixed span.
+STEPPED_ROLES = frozenset({"power_out", "battery_power", "fan"})
 
 #: The TEMP graph's fixed span. Unlike the power ladder this never moves -- it is
 #: a scale, not a rung. Watts are floored at zero because zero watts is a real
@@ -183,7 +222,7 @@ class Graph(Static):
         #: frames purely so the hysteresis band has something to compare to.
         self.rung = POWER_STEPS[0]
 
-    def _rung(self, peak: float) -> float:
+    def _rung(self, peak: float, cap: float | None = None) -> float:
         """Smallest rung at or above `peak`.
 
         Steps up the instant the window clears the current rung. Steps back down
@@ -191,14 +230,27 @@ class Graph(Static):
         a series hovering right at a rung would otherwise flip the axis on
         alternate frames, which reads as a glitch rather than as a scale change.
 
-        Above the tallest tuned rung the ladder gives way to the 1-2-5 grid. The
-        rungs were measured on a 60 W laptop; a desktop CPU or a 140 W charger
-        would otherwise peg the axis at 60 W and clip everything above it, which
-        is the one thing a fixed axis must never do.
+        `cap` is the ceiling the hardware declares for this channel, and it joins
+        the tuned rungs as one more of them -- usually the top one. It is the best
+        axis a fixed scale can have: a machine held at a 100 W cap fills the panel
+        exactly, with no headroom it will never use. The rungs themselves were
+        measured on a 60 W laptop, so on a desktop CPU or a 140 W charger they
+        would peg the axis at 60 W and clip everything above it.
+
+        Past every candidate the axis climbs in whole steps -- POWER_STEP for the
+        power roles, FAN_STEP for the fan. That is what keeps a reading above the
+        declared cap (a cap is a setting, not a law of physics; drivers report
+        excursions past it) on the graph instead of flattened against its top,
+        which is the one thing a fixed axis must never do -- while bounding the
+        headroom a single excursion can open at one step.
         """
-        target = next((s for s in POWER_STEPS if peak <= s), None)
+        step = FAN_STEP if self.role == "fan" else POWER_STEP
+        # The fan has no tuned ladder of its own: its rungs are the multiples.
+        rungs = () if self.role == "fan" else POWER_STEPS
+        candidates = sorted(rungs + ((cap,) if cap else ()))
+        target = next((s for s in candidates if peak <= s), None)
         if target is None:
-            target = nice_ceil(peak)
+            target = max(step, step * math.ceil(peak / step))
         if target < self.rung and peak > target * STEP_HYSTERESIS:
             return self.rung  # inside the dead band -- hold the taller axis
         self.rung = target
@@ -238,11 +290,15 @@ class Graph(Static):
         # wins outright -- it is the one ceiling the user asked for by name, so
         # nothing below gets to second-guess it.
         #
-        # OUT and BATT then take a rung off POWER_STEPS, chosen from the window
-        # on screen rather than from the run: the tall axis is there for the
-        # burst being drawn, and once that burst has scrolled off, holding 0-60
-        # only buys back the empty two thirds it was opened to avoid. Each graph
-        # reads its own window, so a spike on one leaves the other alone.
+        # OUT and BATT then take a rung off POWER_STEPS, and FAN a multiple of
+        # FAN_STEP, chosen from the window on screen rather than from the run:
+        # the tall axis is there for the burst being drawn, and once that burst
+        # has scrolled off, holding 0-60 only buys back the empty two thirds it
+        # was opened to avoid. Each graph reads its own window, so a spike on one
+        # leaves the other alone. A ceiling the hardware declares goes in as the
+        # top rung -- unlike the unstepped roles below, which take nominal_max as
+        # the whole axis, a stepped role is still free to climb past it, because
+        # a cap is a setting and readings do cross it.
         #
         # Otherwise a channel that declares nominal_max gets exactly that,
         # forever, and temperature falls back to TEMP_RANGE -- the one graph that
@@ -258,7 +314,7 @@ class Graph(Static):
         elif self.role in STEPPED_ROLES:
             # After the magnitude pass above, so BATT picks its rung on how hard
             # the battery is working rather than on which way it is flowing.
-            hi = self._rung(max(history))
+            hi = self._rung(max(history), cap=ch.nominal_max or None)
         else:
             ceiling = ch.nominal_max
             if not ceiling and self.role == "temperature":

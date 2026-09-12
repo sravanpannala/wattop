@@ -1,8 +1,10 @@
-"""The battery time-left estimator.
+"""The channels computed across whatever a machine turned out to have.
 
-It averages watts and divides once, rather than averaging the firmware's own
-per-sample estimate. These tests drive it against a fake clock, because the
-whole design turns on durations rather than sample counts.
+Mostly the battery time-left estimator, which averages watts and divides once
+rather than averaging the firmware's own per-sample estimate. These tests drive
+it against a fake clock, because the whole design turns on durations rather than
+sample counts. The fastest-fan aggregate at the end needs no clock: it is a max
+over whatever RPM channels discovery found.
 """
 
 from __future__ import annotations
@@ -13,8 +15,12 @@ from wattop.core import aggregates
 from wattop.core.aggregates import (
     ETA_CEILING_S,
     ETA_WARMUP,
+    FASTEST_FAN_KEY,
     _EtaEstimator,
+    attach_builtin_aggregates,
 )
+from wattop.core.channel import Channel
+from wattop.core.sampler import Sampler
 
 
 class FakeClock:
@@ -140,3 +146,108 @@ def test_averaging_watts_survives_a_spike_that_would_wreck_an_eta_mean(clock):
     clock.advance(1.0)
     eta = feed(est, clock, -30.0, 30.0, ticks=10)
     assert eta == pytest.approx(3600.0, rel=0.15)
+
+
+class Fans:
+    """A source with however many tachometers the test asks for.
+
+    Modelled on hwmon, which is where these come from: RPM in the thermal group,
+    no role of their own, whole numbers.
+    """
+
+    name = "fans"
+
+    def __init__(
+        self,
+        rpm: dict[str, float],
+        labels: dict[str, str] | None = None,
+        maxima: dict[str, float] | None = None,
+    ) -> None:
+        self._rpm = rpm
+        self._labels = labels or {}
+        #: Per-fan declared top speed, as hwmon's `fanN_max` gives it. Absent for
+        #: a tachometer whose driver publishes no maximum, which is most of them.
+        self._maxima = maxima or {}
+
+    def available(self) -> bool:
+        return True
+
+    def channels(self) -> list[Channel]:
+        return [
+            Channel(
+                key,
+                self._labels.get(key, key),
+                "RPM",
+                "thermal",
+                None,
+                0,
+                nominal_max=self._maxima.get(key),
+            )
+            for key in self._rpm
+        ]
+
+    def read(self) -> dict[str, float]:
+        return dict(self._rpm)
+
+    def close(self) -> None:
+        pass
+
+
+def sampler_with(source) -> Sampler:
+    s = Sampler(sources=[source], derived=[], history_len=60, overrides={})
+    attach_builtin_aggregates(s)
+    return s
+
+
+def test_the_fastest_fan_reports_the_highest_reading_of_several():
+    s = sampler_with(Fans({"fan1": 1200.0, "fan2": 3100.0, "fan3": 0.0}))
+    assert s.sample().values[FASTEST_FAN_KEY] == 3100.0
+
+
+def test_several_fans_are_labelled_as_the_fastest_rather_than_by_name():
+    """Which of three EC fans is currently leading changes sample to sample; the
+    channel's own name must not."""
+    s = sampler_with(Fans({"fan1": 1200.0, "fan2": 3100.0, "fan3": 900.0}))
+    assert s.channels[FASTEST_FAN_KEY].label == "Fastest fan"
+    assert s.channels[FASTEST_FAN_KEY].role == "fan"
+    assert s.channels[FASTEST_FAN_KEY].unit == "RPM"
+
+
+def test_a_single_fan_keeps_its_own_label():
+    """Calling it the fastest would be a fiction on a machine that has one."""
+    s = sampler_with(Fans({"fan1": 1823.0}, labels={"fan1": "CPU fan"}))
+    assert s.channels[FASTEST_FAN_KEY].label == "CPU fan"
+    assert s.sample().values[FASTEST_FAN_KEY] == 1823.0
+
+
+def test_the_declared_ceiling_is_the_highest_any_of_the_fans_can_reach():
+    """The fastest fan can be any of them, so the series tops out at the fastest
+    ceiling among them."""
+    s = sampler_with(
+        Fans(
+            {"fan1": 1200.0, "fan2": 3100.0},
+            maxima={"fan1": 4400.0, "fan2": 5200.0},
+        )
+    )
+    assert s.channels[FASTEST_FAN_KEY].nominal_max == 5200.0
+
+
+def test_one_fan_without_a_declared_ceiling_leaves_the_aggregate_unknown():
+    """A tachometer with no published maximum could out-spin the figure, and an
+    axis ceiling a reading can exceed is worse than no ceiling at all."""
+    s = sampler_with(Fans({"fan1": 1200.0, "fan2": 3100.0}, maxima={"fan1": 4400.0}))
+    assert s.channels[FASTEST_FAN_KEY].nominal_max is None
+
+
+def test_a_fanless_machine_gets_no_fan_channel():
+    """No channel means no role, and the UI draws no FAN graph."""
+    s = sampler_with(Fans({}))
+    assert FASTEST_FAN_KEY not in s.channels
+    assert s.role("fan") is None
+
+
+def test_a_stopped_fan_is_a_reading_not_an_absence():
+    """0 RPM means the machine is cool enough to coast -- worth seeing, and
+    distinct from having no tachometer at all."""
+    s = sampler_with(Fans({"fan1": 0.0}))
+    assert s.sample().values[FASTEST_FAN_KEY] == 0.0

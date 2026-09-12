@@ -20,6 +20,14 @@ from wattop.core.sampler import DerivedChannel, Sampler
 
 HOTTEST_KEY = "thermal.max"
 
+#: The same idea for fans. A laptop reports one to three of them under names
+#: only its EC cares about (cros_ec gives `fan1`-`fan3` here), a desktop tower
+#: can report half a dozen, and a fanless machine reports none -- so which fan
+#: to headline is not knowable before probing either. The fastest one is the
+#: interesting one: it is the machine's own answer to how hard it is working to
+#: stay cool, and it leads the temperature curve rather than trailing it.
+FASTEST_FAN_KEY = "fan.max"
+
 #: Deliberately not "battery.eta": the Windows source's raw firmware reading is
 #: `batt.eta`, and a key two characters away from it would read as a typo
 #: forever. This one says what it is -- the averaged one.
@@ -70,6 +78,7 @@ ETA_SUSPEND_S = 5.0
 
 def attach_builtin_aggregates(sampler: Sampler, eta_window: float = DEFAULT_ETA_WINDOW) -> None:
     _attach_hottest(sampler)
+    _attach_fastest_fan(sampler)
     _attach_eta(sampler, eta_window)
 
 
@@ -98,6 +107,48 @@ def _attach_hottest(sampler: Sampler) -> None:
                 precision=1,
             ),
             evaluate=hottest,
+        )
+    )
+
+
+def _attach_fastest_fan(sampler: Sampler) -> None:
+    sources = [
+        ch.key
+        for ch in sampler.channels.values()
+        if ch.unit == "RPM" and not ch.static and ch.key != FASTEST_FAN_KEY
+    ]
+    if not sources:
+        return  # a fanless machine gets no channel, hence no FAN graph
+
+    def fastest(sample: dict[str, float]) -> float | None:
+        seen = [sample[k] for k in sources if k in sample]
+        return max(seen) if seen else None
+
+    label = "Fastest fan" if len(sources) > 1 else sampler.channels[sources[0]].label
+
+    # The fastest of several fans can be any of them, so the ceiling this series
+    # can reach is the highest of their declared ceilings -- but only if every
+    # one of them declares. One tachometer without a `fanN_max` is a fan that
+    # could out-spin the figure, and an axis ceiling that a reading can exceed
+    # invisibly is worse than none: the UI has a rung ladder for unknown, and
+    # nothing at all for wrong.
+    caps = [sampler.channels[key].nominal_max for key in sources]
+    declared = max(caps) if all(cap is not None for cap in caps) else None
+
+    sampler.add_derived(
+        DerivedChannel(
+            channel=Channel(
+                key=FASTEST_FAN_KEY,
+                label=label,
+                unit="RPM",
+                group="thermal",
+                role="fan",
+                # Whole revolutions per minute. A tenth of an RPM is noise the
+                # tachometer cannot actually resolve.
+                precision=0,
+                nominal_max=declared,
+            ),
+            evaluate=fastest,
         )
     )
 

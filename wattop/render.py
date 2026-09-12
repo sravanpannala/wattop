@@ -55,6 +55,10 @@ GRADIENTS = {
     # say which graph you are looking at before the title registers.
     "cpu": ["#4a148c", "#6a1b9a", "#7b1fa2", "#8e24aa", "#9c27b0", "#ab47bc", "#ba68c8"],
     "memory": ["#004d40", "#00695c", "#00796b", "#00897b", "#009688", "#26a69a", "#4db6ac"],
+    # Pink, the last family none of the others had taken. Deliberately not a
+    # second heat ramp: the fan graph sits next to TEMP, and two graphs going red
+    # at the top would read as one reading drawn twice.
+    "fan": ["#880e4f", "#ad1457", "#c2185b", "#d81b60", "#e91e63", "#ec407a", "#f48fb1"],
     "default": ["#37474f", "#455a64", "#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"],
 }
 

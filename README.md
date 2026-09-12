@@ -75,9 +75,11 @@ Voltage 8.630 V  Current +5.220 A  ██████████████░
 Six graphs, three rows, in the order they earn: **OUT** and **BATT** are the two that actually move,
 so they take the top row at 30% of the window each. **CPU** and **MEM** sit under them at 22%, since
 what the machine is doing is the explanation for what it is drawing and the two want reading
-together. **IN** and **TEMP** get 16% on the bottom row — the charger rail sits at its ceiling most
-of the time and the hottest sensor moves slowly, so both are read as a number more often than as a
-shape. Retune per role in `config.toml`:
+together. **TEMP** gets the same 22% — the hottest of however many sensors there are — and **IN**
+16%: the charger rail sits at its ceiling most of the time, so it is read as a number more often
+than as a shape. A machine that reports fan tachometers — most Linux laptops do, via hwmon — gets a
+seventh, **FAN**, on the 22% tier too: the fastest fan of however many there are, which is the
+machine's own account of how hard it is working to stay cool. Retune per role in `config.toml`:
 
 ```toml
 [graphs]
@@ -249,7 +251,7 @@ grew a sensor -- the new columns land in the middle of the row, not at the end.
 The UI never names a sensor. It lays out by **group** (`in`, `out`, `battery`, `system`, `rails`,
 `thermal`) and headlines whatever fills each **role** (`power_in`, `power_out`, `battery_power`,
 `battery_voltage`, `battery_current`, `battery_charge`, `battery_level`, `battery_eta`, `ac_online`,
-`temperature`, `cpu`, `memory`). So a new reading only ever needs to declare where it belongs, and
+`temperature`, `fan`, `cpu`, `memory`). So a new reading only ever needs to declare where it belongs, and
 the display follows. `rails` and `thermal` are sampled but not drawn, so anything you want on
 screen wants one of the other groups or a role -- including a rail you miss, which
 `[overrides."emi.GPU"] group = "other"` puts back.

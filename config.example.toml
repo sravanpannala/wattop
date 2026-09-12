@@ -26,15 +26,17 @@ eta_window = 300.0
 show_details = false
 
 # Fraction of the window height each headline graph gets. Roles left out share
-# whatever is left over. Defaults shown: three rows of two in a landscape
-# window, heaviest pair first.
+# whatever is left over. Defaults shown: two to a row in a landscape window,
+# heaviest pair first. A role the machine cannot fill takes no space at all, so
+# `fan` costs nothing on a fanless one.
 [graphs]
 power_out     = 0.30
 battery_power = 0.30
 cpu           = 0.22
 memory        = 0.22
 power_in      = 0.16
-temperature   = 0.16
+temperature   = 0.22
+fan           = 0.22
 
 # ---------------------------------------------------------------------------
 # [[sensor]] -- a reading from one of the generic sources.
@@ -45,7 +47,7 @@ temperature   = 0.16
 #            -> which panel. `rails` and `thermal` are read but not drawn.
 #   role   = power_in | power_out | battery_power | battery_voltage |
 #            battery_current | battery_charge | battery_level | battery_eta |
-#            ac_online | temperature | cpu | memory
+#            ac_online | temperature | fan | cpu | memory
 #            -> the headline slot this fills, if any
 #   scale/offset are applied as  value * scale + offset
 # ---------------------------------------------------------------------------

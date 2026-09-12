@@ -27,6 +27,7 @@ ROLES = (
     "battery_eta",  # signed seconds: positive to empty, negative to full
     "ac_online",
     "temperature",  # the sensor worth watching, usually the hottest one
+    "fan",  # the fan worth watching, usually the fastest one
     "cpu",  # processor utilisation, percent
     "memory",  # physical memory in use
 )

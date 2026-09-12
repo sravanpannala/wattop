@@ -6,6 +6,29 @@ All notable changes to wattop are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-11
+
+### Fixed
+- Graphs sharing a grid row ended at different lines: a graph's height came
+  from its weight alone, so with four headline roles every row had a shorter
+  member and a ragged gap under it. Each row's members now stretch to its
+  tallest.
+- Axis labels of five figures and up overflowed their field, pushing the top
+  row of the plot past the crop and silently dropping its newest sample. They
+  shed precision instead.
+- Sensor panels were budgeted against the app width rather than their own
+  content width, which could tear rows on a narrow window with long labels.
+- tmux and byobu named the window "python3". The process title now says
+  wattop, via a Linux-only `setproctitle` dependency whose import is guarded,
+  so a build without it loses only the name.
+
+### Changed
+- The catch-all OTHER group -- GPU clocks and whatever else a source reads but
+  cannot classify -- is a detail panel now, opened with `s` like rails and
+  thermal zones.
+- Default history doubled to 480 samples: braille packs two samples per cell,
+  and 240 left the left third of a wide portrait plot permanently blank.
+
 ## [0.1.1] - 2026-09-04
 
 ### Added

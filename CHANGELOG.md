@@ -6,6 +6,8 @@ All notable changes to wattop are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-14
+
 ### Fixed
 - `pip install wattop` on 32-bit Raspberry Pi OS, RISC-V and other Linux
   machines with no `setproctitle` wheel tried to compile it, and failed without

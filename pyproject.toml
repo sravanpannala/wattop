@@ -40,7 +40,11 @@ dependencies = [
     # argv is rewritten in place. Linux-only: that is where the multiplexers
     # live, and it keeps Windows ARM64 free of a wheel it does not need. The
     # import is guarded, so packagers may drop it and lose only the name.
-    "setproctitle>=1.3; sys_platform == 'linux'",
+    #
+    # And only where PyPI has a wheel for it. It is a C extension, so on 32-bit
+    # Raspberry Pi OS or RISC-V pip would compile it, and without gcc the whole
+    # install fails -- for a window name. Those machines skip it instead.
+    "setproctitle>=1.3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
 ]
 dynamic = ["version"]
 

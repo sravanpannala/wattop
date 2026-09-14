@@ -1,8 +1,10 @@
 # Packaging
 
-wattop ships as **one `py3-none-any` wheel**. There is no compiled extension
-anywhere in the tree, so the same file serves Windows x64 and ARM64, Linux
-x86-64 and aarch64. Nothing here needs a per-platform build matrix, and nothing
+wattop ships as **one `py3-none-any` wheel**. wattop's own code is pure Python,
+so the same file serves Windows x64 and ARM64, Linux x86-64 and aarch64. The one
+compiled dependency is `setproctitle`, and it is Linux-only (x86-64 and aarch64),
+optional, and used only to name the tmux window. A recipe may drop it: the
+import is guarded, and without it the window just shows the default name. Nothing here needs a per-platform build matrix, and nothing
 here needs a frozen binary.
 
 Every channel below is one the maintainer owns and can publish to alone. Getting

@@ -192,16 +192,22 @@ native code and sudoless and get it right. Use one of those.
 ## Install
 
 ```console
-$ uvx wattop                 # run it without installing anything
-$ uv tool install wattop     # or keep it on PATH
+$ uvx wattop                 # try it without installing anything
+$ uv tool install wattop     # keep it on PATH
 ```
 
 [uv](https://docs.astral.sh/uv/) installs its own Python, so this works on a machine with none. If
 you would rather use what you have, `pipx install wattop` and `pip install wattop` both work; wattop
 needs Python 3.11 or newer.
 
+For daily use, install it rather than running it through `uvx`. Under tmux or byobu an installed
+`wattop` names its window "wattop"; under `uvx` the window says "uv", because uv stays in the
+foreground as wattop's parent and the multiplexer reads the name from uv.
+
 There is one wheel and it is `py3-none-any` — the same file serves Windows x64 and ARM64, Linux
-x86-64 and aarch64, with no compiled extension anywhere.
+x86-64 and aarch64. wattop itself is pure Python. On x86-64 and aarch64 Linux it adds one small
+compiled dependency, `setproctitle`, only to set that window name, and PyPI has ready-built wheels
+for it. Other Linux machines, such as 32-bit Raspberry Pi OS, skip it and need no compiler.
 
 Optional: `wattop[parquet]` logs to Parquet instead of CSV. It has no Windows ARM64 wheel, so on a
 Snapdragon machine stick to CSV.

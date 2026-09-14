@@ -6,6 +6,21 @@ All notable changes to wattop are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `pip install wattop` on 32-bit Raspberry Pi OS, RISC-V and other Linux
+  machines with no `setproctitle` wheel tried to compile it, and failed without
+  gcc. The dependency is now declared only for x86-64 and aarch64, where PyPI
+  has wheels. Everywhere else the window just keeps its default name.
+- The release zipapp bundled a `setproctitle` built for the release runner's
+  Python 3.12 on x86-64, which failed to import anywhere else. It is left out
+  now, and the release fails if any native file gets into the zipapp.
+
+### Changed
+- The README recommends `uv tool install wattop` for daily use. Under `uvx`,
+  tmux and byobu name the window "uv", not "wattop": uv stays in the foreground
+  as the parent process, and the multiplexer reads the name from it. The 0.1.2
+  entry did not say this.
+
 ## [0.1.3] - 2026-09-12
 
 ### Added

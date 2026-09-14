@@ -38,13 +38,30 @@ jobs:
       # Built OUTSIDE dist/ deliberately. The PyPI upload takes everything in
       # its packages directory and rejects anything that is not a wheel or an
       # sdist, so a zipapp sitting in dist/ fails the entire publish.
+      #
+      # setproctitle is removed before packing. Installed here it is a C
+      # extension for this runner's exact Python and processor, so everywhere
+      # else it fails to import and is only dead weight unpacked into ~/.shiv.
+      # The import in cli.py is guarded; the zipapp just keeps the default
+      # process name.
       - name: Build the zipapp
         run: |
           mkdir -p assets
-          uvx shiv -c wattop -o assets/wattop.pyz dist/*.whl
+          uv pip install --quiet --target build/site dist/*.whl
+          rm -rf build/site/setproctitle build/site/setproctitle-*.dist-info
+          uvx shiv -c wattop -o assets/wattop.pyz --site-packages build/site
 
       - name: Smoke-test the zipapp
         run: |
+          # Hold the "one file for every OS and processor" promise: fail the
+          # release if anything platform-specific slipped in.
+          python - <<'EOF'
+          import sys, zipfile
+          native = [n for n in zipfile.ZipFile("assets/wattop.pyz").namelist()
+                    if n.endswith((".so", ".pyd", ".dylib"))]
+          print("native files:", native or "none")
+          sys.exit(1 if native else 0)
+          EOF
           python assets/wattop.pyz --version
           python assets/wattop.pyz --list || echo "no sensors on this runner, which is fine"
 
